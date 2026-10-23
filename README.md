@@ -30,18 +30,18 @@
 
 ## 获取开发包
 
-已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.4.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
+已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.5.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
 
-[下载 dsh-node-flow-0.1.0-codex.4.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.4.tgz)
+[下载 dsh-node-flow-0.1.0-codex.5.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.5.tgz)
 
 DSH「添加插件」的输入框需要网址，可直接填：
 
 ```text
-https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.4.tgz
+https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.5.tgz
 ```
 
 ```text
-SHA-256: e5b1b5a7a6af48ae79b14ad44f5300eebf1b83bac4dcb8666cd9d2dd9428eff9
+SHA-256: bf3352f5320add7d950e49d3fc6d1846c0a646ef969c3d4cd3389d6d4b34c982
 ```
 
 此文件是已验证开发包的原样复制，没有重打包；包内说明保留打包时版本，不包含本次仓库首页更新。它不是 npm 正式发布版。

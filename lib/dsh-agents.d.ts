@@ -14,6 +14,8 @@ export declare function splitFrontmatter(text: string): {
     meta: Record<string, string>;
     body: string;
 };
+/** Prefer the role's own H1 title; the frontmatter name is a slug. */
+export declare function displayName(meta: Record<string, string>, body: string, fallback: string): string;
 /** Enumerate DSH skill roles; unreadable entries are skipped, not fatal. */
 export declare function listDshAgents(home: string): Promise<{
     agents: DshAgent[];

@@ -1,6 +1,6 @@
 {
   "name": "dsh-node-flow",
-  "version": "0.1.0-codex.4",
+  "version": "0.1.0-codex.5",
   "private": true,
   "description": "DSH native Agent workflow canvas with a local Codex role library, live output and bounded paragraph handoff.",
   "type": "module",

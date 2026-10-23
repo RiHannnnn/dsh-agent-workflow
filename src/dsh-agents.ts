@@ -52,6 +52,13 @@ export function splitFrontmatter(text: string): { meta: Record<string, string>; 
   return { meta, body: text.slice(match[0].length) }
 }
 
+/** Prefer the role's own H1 title; the frontmatter name is a slug. */
+export function displayName(meta: Record<string, string>, body: string, fallback: string): string {
+  const heading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim()
+  const raw = heading || meta.name || fallback
+  return raw.replace(/^agency-/i, '').replace(/\s+(Agent\s+)?Personality$/i, '').replace(/\s+Agent$/i, '').trim() || fallback
+}
+
 function skillsDir(home: string): string { return join(home, 'skills') }
 
 /** Enumerate DSH skill roles; unreadable entries are skipped, not fatal. */
@@ -73,10 +80,9 @@ export async function listDshAgents(home: string): Promise<{ agents: DshAgent[];
       if (++count > AGENT_LIMITS.dirs) { warnings.push('技能数量超过上限，仅显示前 400 个。'); break }
       if (!entry.isDirectory() || !idPattern.test(entry.name)) continue
       try {
-        const { meta } = splitFrontmatter(await readBounded(join(directory, entry.name, 'SKILL.md'), AGENT_LIMITS.metaBytes))
-        // The Agency role skills carry the display name in frontmatter; fall back to the directory.
-        const name = (meta.name || entry.name).replace(/^agency-/, '').replace(/-/g, ' ')
-        agents.push({ id: entry.name, name, description: meta.description ?? '', engine: 'dsh' })
+        const text = await readBounded(join(directory, entry.name, 'SKILL.md'), AGENT_LIMITS.metaBytes)
+        const { meta, body } = splitFrontmatter(text)
+        agents.push({ id: entry.name, name: displayName(meta, body, entry.name), description: meta.description ?? '', engine: 'dsh' })
       } catch { warnings.push(`跳过无法读取的技能：${entry.name}`) }
     }
   } finally {
