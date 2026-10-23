@@ -21,11 +21,17 @@
 
 上游的代码、分支、循环和定时任务实现仍保留，但它们与新增 Codex 调度的支持范围不同，不应把全部上游能力视为已完成 Codex 联调。
 
-## 获取开发包（上传后可用）
+## 获取开发包
 
-已验证包将以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.2.tgz>)。**当前尚未上传到 GitHub，以下公开下载地址仅在仓库及文件上传后可用，本次没有验证远端可达性：**
+已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.2.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
 
-[下载 dsh-node-flow-0.1.0-codex.2.tgz（上传后可用）](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.2.tgz)
+[下载 dsh-node-flow-0.1.0-codex.2.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.2.tgz)
+
+DSH「添加插件」的输入框需要网址，可直接填：
+
+```text
+https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.2.tgz
+```
 
 ```text
 SHA-256: 2df656b65b93e0ff31b1cd53f6fe919c188926968465dd2c620c2e4df9e1c6a9
