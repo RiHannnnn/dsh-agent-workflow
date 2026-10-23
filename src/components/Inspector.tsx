@@ -285,7 +285,7 @@ export function Inspector() {
               </label>
               <button type="button" className="wf-btn" onClick={() => setLibraryRefresh((value) => value + 1)}>刷新角色</button>
               {libraryError && <p role="alert">{libraryError}</p>}
-              {library && (!library.ok || !library.codexAvailable) && <p role="alert">本地 Codex 不可用，请检查安装和配置。</p>}
+              {library && (!library.ok || library.available === false) && <p role="alert">DSH 角色库暂不可用，请刷新重试。</p>}
               {library?.warnings?.map((warning, i) => <p key={i} role="status">{warning}</p>)}
               <label className="wf-field"><span>Codex 模型（留空沿用本地默认）</span><input value={d.codexModel ?? ''} onChange={(event) => updateNodeData(node.id, { codexModel: event.target.value })} placeholder="不覆盖本地配置" /></label>
               <WorkingDirectoryField key={node.id} value={d.cwd ?? ''} onSave={(cwd) => updateNodeData(node.id, { cwd })} />

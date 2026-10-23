@@ -21,24 +21,27 @@
 
 上游的代码、分支、循环和定时任务实现仍保留，但它们与新增 Codex 调度的支持范围不同，不应把全部上游能力视为已完成 Codex 联调。
 
-## 中文显示
+## 全部在 DSH 内完成
 
-角色库界面、角色下拉选择与画布节点都显示中文名称与中文简介，并保留英文原名备查；中文和英文关键词都能搜索。汉化只发生在插件显示层，**不会修改** `~/.codex/agents` 里的原始 TOML，因此上游更新角色时不会被覆盖。尚未收录的自定义角色会原样显示英文。
+- **角色库来自 DSH**：直接读取 `~/.dsh/skills/*/SKILL.md`，你已安装的 184 个 Agency Agents 角色全部可选，不再读取 Codex 的 agents 目录，也不需要 Codex 登录或运行 Codex 进程。
+- **执行走 DSH 模型**：角色正文作为指令注入，由当前 DSH 的会话与子 Agent 运行，不再要求填写工作目录。
+- **中文显示**：角色库、角色下拉与画布节点显示中文名与中文简介，保留英文原名；中英文关键词都能搜索。只改显示层，不改 `~/.dsh/skills` 原始文件。
+- 未收录的自定义技能自动回退英文显示。
 
 ## 获取开发包
 
-已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.3.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
+已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.4.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
 
-[下载 dsh-node-flow-0.1.0-codex.3.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.3.tgz)
+[下载 dsh-node-flow-0.1.0-codex.4.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.4.tgz)
 
 DSH「添加插件」的输入框需要网址，可直接填：
 
 ```text
-https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.3.tgz
+https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.4.tgz
 ```
 
 ```text
-SHA-256: b033752f98498d41a0ef340103a5114f799b75a5a941c5fb6c41d0736df3cc66
+SHA-256: e5b1b5a7a6af48ae79b14ad44f5300eebf1b83bac4dcb8666cd9d2dd9428eff9
 ```
 
 此文件是已验证开发包的原样复制，没有重打包；包内说明保留打包时版本，不包含本次仓库首页更新。它不是 npm 正式发布版。

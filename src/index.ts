@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { validateWorkflowDocument, type WorkflowDocument, type WorkflowEdge, type WorkflowNode, type WorkflowNodeData } from './model.js'
-import { registerCodexRoutes, type CodexContext } from './codex.js'
+import { registerDshAgentRoutes, type DshContext } from './dsh-routes.js'
 import { triggerInput } from './runner.js'
 export const name = 'dsh-node-flow'
 export const inject = ['webServer'] as const
@@ -805,7 +805,9 @@ function runDueSchedules(ctx: Context): void {
 }
 
 export function apply(ctx: Context) {
-  registerCodexRoutes(ctx as unknown as CodexContext)
+  // Route registration is tied to the plugin effect so unload removes it.
+  const disposeDshAgents = registerDshAgentRoutes(ctx as unknown as DshContext)
+  ctx.effect(() => disposeDshAgents)
   // `inject: ['webServer']` guarantees this is present when apply runs.
   const webServer = (ctx as unknown as { webServer: WebServerLike }).webServer
 

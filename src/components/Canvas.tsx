@@ -92,7 +92,7 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
         const role = JSON.parse(roleData) as { id?: string; name?: string }
         if (typeof role.id !== 'string' || !role.id || role.id.length > 128 || /[\\/\u0000-\u001f\u007f]/.test(role.id) || role.id === '.' || role.id === '..' || typeof role.name !== 'string') return
         const id = addNodeAt(kind, role.name.slice(0, 200), pos)
-        useCanvasStore.getState().updateNodeData(id, { engine: 'codex', roleId: role.id, handoff: 'complete', timeout: '120' })
+        useCanvasStore.getState().updateNodeData(id, { engine: 'dsh', roleId: role.id, handoff: 'complete', timeout: '120' })
       } catch { /* Ignore malformed drops, never execute dropped content. */ }
     } else addNodeAt(kind, DEFAULT_LABELS[kind] ?? kind, pos)
   }

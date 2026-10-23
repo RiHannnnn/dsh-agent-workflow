@@ -3,12 +3,13 @@ export type LibraryAgent = {
     id: string;
     name: string;
     description: string;
-    engine: 'codex';
+    engine: 'dsh' | 'codex';
 };
 export type AgentLibraryResult = {
     ok: boolean;
     agents: LibraryAgent[];
-    codexAvailable: boolean;
+    codexAvailable?: boolean;
+    available?: boolean;
     warnings?: string[];
     capability?: string;
 };

@@ -20,7 +20,7 @@ export function AgentLibrary() {
   const agents = (library?.agents ?? []).filter((agent) => roleMatches(agent, query))
 
   return (
-    <section className="wf-palette__group" aria-label="Codex 角色库">
+    <section className="wf-palette__group" aria-label="DSH 角色库">
       <div className="wf-palette__group-title">Codex 角色库</div>
       <label className="wf-field">
         <span>搜索角色</span>
@@ -29,9 +29,9 @@ export function AgentLibrary() {
       <button type="button" className="wf-btn" onClick={() => setRefresh((value) => value + 1)}>刷新角色库</button>
       {error && <p role="alert">{error}</p>}
       {!library && !error && <p role="status">加载本地角色…</p>}
-      {library && (!library.ok || !library.codexAvailable) && <p role="status">本地 Codex 不可用；请安装并配置后刷新。</p>}
+      {library && (!library.ok || library.available === false) && <p role="status">DSH 角色库暂不可用；请刷新重试。</p>}
       {library?.warnings?.map((warning, i) => <p key={i} role="status">{warning}</p>)}
-      {library?.ok && library.codexAvailable && agents.map((agent) => {
+      {library?.ok && agents.map((agent) => {
         const zh = localizeRole(agent)
         return (
         <button
@@ -43,25 +43,25 @@ export function AgentLibrary() {
           draggable
           onDragStart={(event) => {
             event.dataTransfer.setData('application/reactflow', 'agent')
-            event.dataTransfer.setData('application/dsh-agent-role', JSON.stringify({ id: agent.id, name: zh.name }))
+            event.dataTransfer.setData('application/dsh-agent-role', JSON.stringify({ id: agent.id, name: zh.name, engine: 'dsh' }))
             event.dataTransfer.effectAllowed = 'move'
           }}
           onClick={() => {
             const store = useCanvasStore.getState()
             const id = store.addNodeAt('agent', zh.name, { x: 160 + Math.random() * 240, y: 120 + Math.random() * 240 })
-            store.updateNodeData(id, { engine: 'codex', roleId: agent.id, handoff: 'complete', timeout: '120' })
+            store.updateNodeData(id, { engine: 'dsh', roleId: agent.id, handoff: 'complete', timeout: '120' })
           }}
         >
           <span className="wf-palette__icon" style={{ background: '#a78bfa' }}>🤖</span>
           <span className="wf-palette__label" style={{ whiteSpace: 'normal', textAlign: 'left' }}>
             {zh.name}
             <small style={{ display: 'block', opacity: 0.7 }}>{zh.description || agent.id}</small>
-            {zh.localized && <small style={{ display: 'block', opacity: 0.45 }}>Codex · {agent.name}</small>}
+            {zh.localized && <small style={{ display: 'block', opacity: 0.45 }}>DSH · {agent.name}</small>}
           </span>
         </button>
         )
       })}
-      {library?.ok && library.codexAvailable && agents.length === 0 && <p>没有匹配的角色。</p>}
+      {library?.ok && agents.length === 0 && <p>没有匹配的角色。</p>}
     </section>
   )
 }

@@ -20,7 +20,7 @@ test('enabling plugin does not arm or execute stored schedules', async () => {
       get: () => { throw new Error('Unexpected model/runtime service access at startup') },
     })
     assert.ok(routes.has('/dsh-node-flow/agent-library'))
-    assert.ok(routes.has('/dsh-node-flow/run-codex'))
+    assert.ok(routes.has('/dsh-node-flow/run-dsh'))
     assert.ok(routes.has('/dsh-node-flow/schedule'))
   } finally {
     for (const dispose of disposers.reverse()) dispose()

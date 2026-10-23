@@ -1,9 +1,10 @@
 /** Browser-only client. Capability is held in module memory, never disk/storage. */
-export type LibraryAgent = { id: string; name: string; description: string; engine: 'codex' }
+export type LibraryAgent = { id: string; name: string; description: string; engine: 'dsh' | 'codex' }
 export type AgentLibraryResult = {
   ok: boolean
   agents: LibraryAgent[]
-  codexAvailable: boolean
+  codexAvailable?: boolean
+  available?: boolean
   warnings?: string[]
   capability?: string
 }
@@ -26,18 +27,19 @@ export async function fetchAgentLibrary(options: { signal?: AbortSignal } = {}):
   const data: unknown = await response.json()
   if (!response.ok || !data || typeof data !== 'object') throw new Error('角色库暂不可用，请检查本地 Codex 配置后刷新。')
   const raw = data as Record<string, unknown>
-  if (typeof raw.ok !== 'boolean' || typeof raw.codexAvailable !== 'boolean' || !Array.isArray(raw.agents)) throw new Error('角色库返回的数据格式无效。')
+  if (typeof raw.ok !== 'boolean' || !Array.isArray(raw.agents)) throw new Error('角色库返回的数据格式无效。')
   const agents = raw.agents.filter((value): value is LibraryAgent => {
     if (!value || typeof value !== 'object') return false
     const agent = value as Record<string, unknown>
-    return agent.engine === 'codex' && typeof agent.id === 'string' && agent.id.length > 0 && !/[\\/\u0000-\u001f]/.test(agent.id) && agent.id !== '.' && agent.id !== '..' && typeof agent.name === 'string' && typeof agent.description === 'string'
+    return (agent.engine === 'dsh' || agent.engine === 'codex') && typeof agent.id === 'string' && agent.id.length > 0 && !/[\\/\u0000-\u001f]/.test(agent.id) && agent.id !== '.' && agent.id !== '..' && typeof agent.name === 'string' && typeof agent.description === 'string'
   })
   // The server supplies this only via the response header, never in persisted data.
   capability = raw.ok ? response.headers.get(CODEX_CAPABILITY_HEADER) || undefined : undefined
   return {
     ok: raw.ok,
     agents,
-    codexAvailable: raw.codexAvailable,
+    codexAvailable: typeof raw.codexAvailable === 'boolean' ? raw.codexAvailable : undefined,
+    available: typeof raw.available === 'boolean' ? raw.available : true,
     warnings: Array.isArray(raw.warnings) ? raw.warnings.filter((value): value is string => typeof value === 'string') : undefined,
     capability,
   }
