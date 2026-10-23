@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "资料 → 研究综合 → 编辑（逐段）",
+  "description": "导入不会自动执行。先给两个 Codex 节点填写绝对工作目录。第一节点按空行分段，下游每段独立处理。",
+  "nodes": [
+    { "id": "source", "type": "workflow", "position": { "x": 40, "y": 180 }, "style": { "width": 124, "height": 124 }, "data": { "kind": "trigger", "label": "资料输入", "text": "请整理下面的两条项目资料。", "attachments": [{ "name": "项目资料.md", "text": "第一条：先做最小可运行版本，再根据实际使用反馈迭代。\n第二条：工作流应显示当前状态，失败时保留错误，不把部分输出当成完成。" }] } },
+    { "id": "research", "type": "workflow", "position": { "x": 260, "y": 180 }, "style": { "width": 212, "height": 128 }, "data": { "kind": "agent", "label": "研究综合", "engine": "codex", "roleId": "research-synthesist", "cwd": "", "prompt": "只根据输入资料输出两个独立分析段落，不联网、不读其他文件。每段自包含，段落之间留一个空行，不输出开场白。", "handoff": "paragraph", "timeout": "120", "onError": "stop" } },
+    { "id": "editor", "type": "workflow", "position": { "x": 570, "y": 180 }, "style": { "width": 212, "height": 128 }, "data": { "kind": "agent", "label": "逐段编辑", "engine": "codex", "roleId": "codex-default", "cwd": "", "prompt": "将当前输入的一段分析改写成面向初学者的一条清晰建议，100字以内。每次只处理收到的这一段，不假定拥有其它段落，不读文件、不运行命令。", "handoff": "complete", "timeout": "120", "onError": "stop" } },
+    { "id": "result", "type": "workflow", "position": { "x": 880, "y": 180 }, "style": { "width": 124, "height": 124 }, "data": { "kind": "output", "label": "结果", "template": "{{result}}" } }
+  ],
+  "edges": [
+    { "id": "source-research", "source": "source", "target": "research" },
+    { "id": "research-editor", "source": "research", "target": "editor" },
+    { "id": "editor-result", "source": "editor", "target": "result" }
+  ]
+}

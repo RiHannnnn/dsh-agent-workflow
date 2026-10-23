@@ -44,6 +44,21 @@ export type WorkflowNodeData = {
     /** Selected model route for the sub-agent (kind === 'agent'); stored as
      *  `"<provider>|<modelId>"`, empty means inherit the parent agent's model. */
     model?: string;
+    /** Execution engine; omitted preserves the original DSH behavior. */
+    engine?: 'dsh' | 'codex';
+    /** Local Codex agent file stem, or codex-default. Never a host path. */
+    roleId?: string;
+    /** Empty means the local Codex default model. */
+    codexModel?: string;
+    /** Explicitly user-confirmed absolute working directory. */
+    cwd?: string;
+    /** Paragraph delivery starts independent downstream calls, not a shared session. */
+    handoff?: 'complete' | 'paragraph';
+    /** Browser-read, embedded text only; never host filesystem references. */
+    attachments?: Array<{
+        name: string;
+        text: string;
+    }>;
     /** Condition expression (kind === 'if' | 'switch' | 'while'). */
     condition?: string;
     /** Comma-separated case values (kind === 'switch'); each maps to a source handle. */
@@ -90,6 +105,17 @@ export type WorkflowDocument = {
     nodes: WorkflowNode[];
     edges: WorkflowEdge[];
 };
+/** Maximum UTF-8 payload of all embedded attachments in one workflow. */
+export declare const MAX_ATTACHMENT_BYTES: number;
+export declare function attachmentBytes(attachments: Array<{
+    name: string;
+    text: string;
+}>): number;
+export declare function isAbsoluteWorkingDirectory(value: string): boolean;
+/** Validate imports before touching the canvas; preserve safe JSON extension fields. */
+export declare function validateWorkflowDocument(input: unknown): WorkflowDocument;
+/** Export a detached document without sensitive per-run inputs, logs or output. */
+export declare function exportWorkflowDocument(doc: WorkflowDocument): WorkflowDocument;
 /** Default dimensions per node kind (px). All square nodes share one size; agent stays a wide rectangle. */
 export declare const NODE_SIZE: Record<WorkflowNodeType, {
     width: number;

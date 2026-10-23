@@ -1,7 +1,7 @@
 /* dsh-node-flow UI styles 鈥?dark (default) / light theme via CSS variables. */
 
 /* ---- theme tokens: dark (default) ---- */
-:root {
+.wf-overlay {
   --wf-bg: #0b1120;
   --wf-panel: #101a2b;
   --wf-panel2: #162135;
@@ -25,7 +25,7 @@
 }
 
 /* ---- theme tokens: light ---- */
-[data-theme="light"] {
+.wf-overlay[data-theme="light"] {
   --wf-bg: #f4f6fa;
   --wf-panel: #ffffff;
   --wf-panel2: #eef1f6;
@@ -617,12 +617,12 @@
 .tk-num { color: #b5cea8; }
 .tk-com { color: #6a9955; font-style: italic; }
 /* Readable code-editor colors for the light theme (base text + token colors). */
-[data-theme="light"] .wf-ed__pre { color: #1f2328; }
-[data-theme="light"] .wf-ed__gutter { color: #8b94a3; }
-[data-theme="light"] .tk-kw { color: #0000ff; }
-[data-theme="light"] .tk-str { color: #a31515; }
-[data-theme="light"] .tk-num { color: #098658; }
-[data-theme="light"] .tk-com { color: #008000; }
+.wf-overlay[data-theme="light"] .wf-ed__pre { color: #1f2328; }
+.wf-overlay[data-theme="light"] .wf-ed__gutter { color: #8b94a3; }
+.wf-overlay[data-theme="light"] .tk-kw { color: #0000ff; }
+.wf-overlay[data-theme="light"] .tk-str { color: #a31515; }
+.wf-overlay[data-theme="light"] .tk-num { color: #098658; }
+.wf-overlay[data-theme="light"] .tk-com { color: #008000; }
 
 /* ---- run input/output boxes ---- */
 .wf-run__head {
@@ -834,9 +834,11 @@
 
 /* ---- full-screen node-mode overlay ---- */
 .wf-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100000;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--wf-bg);
   display: flex;
   flex-direction: column;
@@ -856,7 +858,7 @@
 /* 2026 UI refresh: visual-only overrides                                      */
 /* ========================================================================== */
 
-:root {
+.wf-overlay {
   --wf-bg: #08101e;
   --wf-panel: #0d1728;
   --wf-panel2: #111e32;
@@ -885,7 +887,7 @@
   --wf-shadow-panel: 0 18px 48px rgba(0, 0, 0, 0.38), 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
-[data-theme="light"] {
+.wf-overlay[data-theme="light"] {
   --wf-bg: #f2f5fa;
   --wf-panel: #ffffff;
   --wf-panel2: #f8faff;
@@ -1105,12 +1107,12 @@
   color: #ff9bac;
   box-shadow: none;
 }
-[data-theme="light"] .wf-btn--danger {
+.wf-overlay[data-theme="light"] .wf-btn--danger {
   background: #e5484d;
   border-color: #d13a40;
   color: #ffffff;
 }
-[data-theme="light"] .wf-btn--danger:hover {
+.wf-overlay[data-theme="light"] .wf-btn--danger:hover {
   background: #d13a40;
   border-color: #c23338;
 }
@@ -1129,20 +1131,20 @@
   box-shadow: 0 8px 18px rgba(151, 36, 59, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-[data-theme="light"] .wf-toolbar__mode {
+.wf-overlay[data-theme="light"] .wf-toolbar__mode {
   border-color: rgba(20, 152, 102, 0.26);
   background: rgba(20, 152, 102, 0.075);
   color: #147a60;
 }
 
-[data-theme="light"] .wf-btn--exit {
+.wf-overlay[data-theme="light"] .wf-btn--exit {
   border-color: #e2a2ad;
   background: linear-gradient(180deg, #fff7f8, #fbecef);
   color: #b62f48;
   box-shadow: 0 2px 7px rgba(118, 35, 52, 0.08);
 }
 
-[data-theme="light"] .wf-btn--exit:hover {
+.wf-overlay[data-theme="light"] .wf-btn--exit:hover {
   border-color: #d87586;
   background: linear-gradient(180deg, #ffedef, #f8dce2);
   color: #9d233c;
@@ -1840,3 +1842,22 @@
   margin: 8px 0;
   color: var(--wf-text);
 }
+
+/* Local Codex edition: scoped to the native panel and follows host theme. */
+.wf-overlay[data-theme] {
+  --wf-bg: var(--dsw-alias-bg-base, #0d1728);
+  --wf-panel: var(--dsw-alias-bg-layer-1, #111e32);
+  --wf-panel2: var(--dsw-alias-bg-layer-2, #172640);
+  --wf-panel3: var(--dsw-alias-bg-module-platform, #1d3150);
+  --wf-panel3h: var(--dsw-alias-interactive-bg-hover, #243352);
+  --wf-text: var(--dsw-alias-label-primary, #dce7f8);
+  --wf-text2: var(--dsw-alias-label-primary, #f6f9ff);
+  --wf-muted: var(--dsw-alias-label-tertiary, #91a4bf);
+  --wf-muted2: var(--dsw-alias-label-caption, #647895);
+  --wf-border: var(--dsw-alias-border-l2, #29405f);
+  --wf-border2: var(--dsw-alias-border-l1, #365173);
+}
+.wf-run-status { max-width: 300px; font-size: 12px; color: var(--wf-muted); overflow-wrap: anywhere; }
+.wf-btn:disabled { opacity: .5; cursor: not-allowed; }
+.wf-palette__group p { font-size: 12px; overflow-wrap: anywhere; color: var(--wf-muted); }
+.wf-node__live { overflow-wrap: anywhere; white-space: pre-wrap; font-size: 10px; max-height: 44px; overflow: hidden; }

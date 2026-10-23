@@ -7,6 +7,7 @@
  */
 
 import { useCanvasStore } from '../store/canvas.js'
+import { AgentLibrary } from './AgentLibrary.js'
 import type { WorkflowNodeType } from '../model.js'
 import { buildWeatherExample, buildNewsExample, buildBasicIfExample, buildQaIfExample, buildDailySwitchExample, buildLoopExample, buildWhileExample } from '../model.js'
 
@@ -64,6 +65,7 @@ export function NodePalette() {
   return (
     <div className="wf-palette">
       <div className="wf-palette__body">
+        <AgentLibrary />
         {GROUPS.map((g) => (
           <div key={g.group} className="wf-palette__group">
             <div className="wf-palette__group-title">{g.group}</div>
@@ -91,7 +93,7 @@ export function NodePalette() {
         <div className="wf-palette__group">
           <div className="wf-palette__group-title">示例</div>
           {EXAMPLES.map((x) => (
-            <div key={x.label} className="wf-palette__item" onClick={() => useCanvasStore.getState().importDocument(x.load())}>
+            <div key={x.label} className="wf-palette__item" onClick={() => { try { useCanvasStore.getState().importDocument(x.load()) } catch (error) { alert(error instanceof Error ? error.message : String(error)) } }}>
               <span className="wf-palette__label">{x.label}</span>
             </div>
           ))}

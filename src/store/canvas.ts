@@ -8,7 +8,7 @@
 
 import { create } from 'zustand'
 import { applyNodeChanges, applyEdgeChanges, addEdge, type NodeChange, type EdgeChange, type Connection } from '@xyflow/react'
-import { createNode, toStepList, type WorkflowDocument, type WorkflowNode, type WorkflowEdge, type WorkflowNodeType } from '../model.js'
+import { createNode, toStepList, exportWorkflowDocument, validateWorkflowDocument, type WorkflowDocument, type WorkflowNode, type WorkflowEdge, type WorkflowNodeType } from '../model.js'
 
 type CanvasState = {
   nodes: WorkflowNode[]
@@ -18,6 +18,8 @@ type CanvasState = {
   selectedEdgeId: string | null
   workflowName: string
   theme: 'dark' | 'light'
+  isRunning: boolean
+  setRunning: (running: boolean) => void
   // actions
   onNodesChange: (changes: NodeChange<WorkflowNode>[]) => void
   onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void
@@ -38,7 +40,7 @@ type CanvasState = {
   /** Build the ordered step list for ctx.workflows. */
   toSteps: () => unknown[]
   /** Load a saved document into the canvas. */
-  importDocument: (doc: WorkflowDocument) => void
+  importDocument: (doc: unknown) => void
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -57,6 +59,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectedEdgeId: null,
   workflowName: 'Untitled workflow',
   theme: 'dark',
+  isRunning: false,
+  setRunning: (isRunning) => set({ isRunning }),
 
   setTheme: (t) => {
     try {
@@ -129,7 +133,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectEdge: (id) => set({ selectedEdgeId: id, selectedId: null }),
   setWorkflowName: (name) => set({ workflowName: name }),
 
-  exportDocument: () => ({
+  exportDocument: () => exportWorkflowDocument({
     version: 1,
     name: get().workflowName,
     nodes: get().nodes,
@@ -138,6 +142,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   toSteps: () => toStepList(get().exportDocument()),
 
-  importDocument: (doc) =>
-    set({ nodes: doc.nodes, edges: doc.edges, activeEdgeIds: [], workflowName: doc.name }),
+  importDocument: (input) => {
+    if (get().isRunning) throw new Error('运行中不能替换工作流，请先停止并等待结束')
+    const doc = validateWorkflowDocument(input)
+    set({ nodes: doc.nodes, edges: doc.edges, activeEdgeIds: [], workflowName: doc.name, selectedId: null, selectedEdgeId: null })
+  },
 }))

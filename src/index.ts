@@ -24,7 +24,9 @@ import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { WorkflowDocument, WorkflowEdge, WorkflowNode, WorkflowNodeData } from './model.js'
+import { validateWorkflowDocument, type WorkflowDocument, type WorkflowEdge, type WorkflowNode, type WorkflowNodeData } from './model.js'
+import { registerCodexRoutes, type CodexContext } from './codex.js'
+import { triggerInput } from './runner.js'
 export const name = 'dsh-node-flow'
 export const inject = ['webServer'] as const
 
@@ -123,6 +125,7 @@ async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
+  if (response.destroyed || response.writableEnded) return
   response.writeHead(status, {
     'cache-control': 'no-store',
     'content-type': 'application/json; charset=utf-8',
@@ -301,8 +304,10 @@ function rejectNonPost(request: IncomingMessage, response: ServerResponse): bool
  * no timeout). `isTimeout()` distinguishes a timeout abort from a caller
  * disconnect, so handlers can report "运行超时" specifically.
  */
-function makeTimeoutSignal(timeoutSec: unknown): { signal: AbortSignal; seconds: number; isTimeout: () => boolean; clear: () => void } {
+function makeTimeoutSignal(timeoutSec: unknown, response?: ServerResponse): { signal: AbortSignal; seconds: number; isTimeout: () => boolean; clear: () => void } {
   const controller = new AbortController()
+  const onDisconnect = () => { if (!response?.writableEnded) controller.abort(new Error('client disconnected')) }
+  response?.once('close', onDisconnect)
   let timedOut = false
   const sec = Math.max(0, Math.floor(Number(timeoutSec)) || 0)
   const timer = sec > 0 ? setTimeout(() => { timedOut = true; controller.abort() }, sec * 1000) : undefined
@@ -312,6 +317,7 @@ function makeTimeoutSignal(timeoutSec: unknown): { signal: AbortSignal; seconds:
     isTimeout: () => timedOut,
     clear: () => {
       if (timer) clearTimeout(timer)
+      response?.removeListener('close', onDisconnect)
     },
   }
 }
@@ -479,6 +485,9 @@ function parseAgentOptions(model: string | undefined): { provider?: string; mode
  * one entry per executed node.
  */
 async function runDocumentGraph(ctx: Context, doc: WorkflowDocument, initialInput: unknown): Promise<RunRecord> {
+  if (doc.nodes.some(n => n.data.engine === 'codex' || n.data.handoff === 'paragraph')) {
+    return { id: `run-${Date.now()}`, name: doc.name, startedAt: new Date().toISOString(), nodeCount: 0, status: 'error', failed: 1, nodes: [{ id: 'unsupported', kind: 'agent', status: 'error', ms: 0, error: 'Codex/逐段交接目前仅支持手动运行，不能通过定时器执行' }] }
+  }
   const docNodes: WorkflowNode[] = Array.isArray(doc?.nodes) ? doc.nodes : []
   const docEdges: WorkflowEdge[] = Array.isArray(doc?.edges) ? doc.edges : []
   const byId = new Map(docNodes.map((n) => [n.id, n]))
@@ -533,7 +542,7 @@ async function runDocumentGraph(ctx: Context, doc: WorkflowDocument, initialInpu
 
     try {
       if (d.kind === 'trigger' || d.kind === 'schedule') {
-        const value = d.text ?? ''
+        const value = triggerInput(n)
         setRec({ status: 'ok', output: value })
         return await fanOut(value)
       } else if (d.kind === 'code') {
@@ -796,6 +805,7 @@ function runDueSchedules(ctx: Context): void {
 }
 
 export function apply(ctx: Context) {
+  registerCodexRoutes(ctx as unknown as CodexContext)
   // `inject: ['webServer']` guarantees this is present when apply runs.
   const webServer = (ctx as unknown as { webServer: WebServerLike }).webServer
 
@@ -812,7 +822,7 @@ export function apply(ctx: Context) {
           if (!sameOrigin(request)) return sendJson(response, 403, { error: 'untrusted origin' })
           let ts: ReturnType<typeof makeTimeoutSignal> | undefined
           try {
-            const body = (await readJsonBody(request, 256 * 1024)) as
+            const body = (await readJsonBody(request, 4 * 1024 * 1024)) as
               | { program?: unknown; language?: unknown; input?: unknown; timeout?: unknown }
               | undefined
             const program = typeof body?.program === 'string' ? body.program : ''
@@ -820,7 +830,7 @@ export function apply(ctx: Context) {
               return sendJson(response, 400, { error: 'program must be a non-empty string' })
             }
             const language = typeof body?.language === 'string' ? body.language : 'typescript'
-            ts = makeTimeoutSignal(body?.timeout)
+            ts = makeTimeoutSignal(body?.timeout, response)
 
             // Python runs through a host subprocess (ctx.codeRuntime has no
             // Python backend); the flow input arrives via the DSH_INPUT env var.
@@ -880,7 +890,7 @@ export function apply(ctx: Context) {
           if (!sameOrigin(request)) return sendJson(response, 403, { error: 'untrusted origin' })
           let ts: ReturnType<typeof makeTimeoutSignal> | undefined
           try {
-            const body = (await readJsonBody(request, 256 * 1024)) as
+            const body = (await readJsonBody(request, 4 * 1024 * 1024)) as
               | { prompt?: unknown; timeout?: unknown; agentOptions?: unknown }
               | undefined
             const prompt = typeof body?.prompt === 'string' ? body.prompt : ''
@@ -904,7 +914,7 @@ export function apply(ctx: Context) {
             if (!provider) {
               return sendJson(response, 400, { error: 'no subagent provider registered' })
             }
-            ts = makeTimeoutSignal(body?.timeout)
+            ts = makeTimeoutSignal(body?.timeout, response)
             // Optional per-child model route: "provider|modelId" picked in the canvas.
             let agentOptions: { provider?: string; model?: string } | undefined
             if (typeof body?.agentOptions === 'object' && body?.agentOptions !== null) {
@@ -991,7 +1001,7 @@ export function apply(ctx: Context) {
           if (rejectNonPost(request, response)) return
           if (!sameOrigin(request)) return sendJson(response, 403, { error: 'untrusted origin' })
           try {
-            const body = (await readJsonBody(request, 256 * 1024)) as
+            const body = (await readJsonBody(request, 4 * 1024 * 1024)) as
               | { action?: unknown; id?: unknown; name?: unknown; cron?: unknown; input?: unknown; steps?: unknown; doc?: unknown }
               | undefined
             const schedules = loadSchedules()
@@ -1020,7 +1030,8 @@ export function apply(ctx: Context) {
             const cron = String(body?.cron ?? '')
             const name = String(body?.name ?? 'scheduled workflow')
             const steps = Array.isArray(body?.steps) ? body.steps : []
-            const doc = body?.doc && typeof body.doc === 'object' ? (body.doc as WorkflowDocument) : undefined
+            const doc = body?.doc ? validateWorkflowDocument(body.doc) : undefined
+            if (doc?.nodes.some(n => n.data.engine === 'codex' || n.data.handoff === 'paragraph')) return sendJson(response, 400, { error: '本地 Codex/逐段交接目前仅支持手动运行，暂不支持定时任务' })
             if (!cron.trim() || (!steps.length && !doc)) {
               return sendJson(response, 400, { error: 'cron and steps (or doc) are required' })
             }
@@ -1081,9 +1092,9 @@ export function apply(ctx: Context) {
       }),
     )
 
-    // Arm the single next-fire scheduler (re-armed on save/clear and after each
-    // fire); stop it on unload.
-    rescheduleScheduler(ctx)
+    // The local development edition must not launch stored schedules merely
+    // because the plugin was enabled. Only an explicit schedule save/clear
+    // action arms the legacy scheduler; Codex schedules remain unsupported.
 
     return () => {
       if (scheduleTimer) clearTimeout(scheduleTimer)

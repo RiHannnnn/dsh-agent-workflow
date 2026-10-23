@@ -79,6 +79,9 @@ export function WorkflowNodeView({ data, selected }: NodeProps<WorkflowNode>) {
     .join(' ')
 
   const size = NODE_SIZE[data.kind]
+  const run = data.lastRun
+  const previewValue = run?.error || (typeof run?.value === 'string' ? run.value : run?.value !== undefined ? JSON.stringify(run.value) : '') || run?.logs?.join('\n') || ''
+  const preview = previewValue.slice(-180)
 
   return (
     <div
@@ -87,6 +90,7 @@ export function WorkflowNodeView({ data, selected }: NodeProps<WorkflowNode>) {
         ['--kind' as string]: meta.color,
         width: size.width,
         height: size.height,
+        gap: data.kind === 'agent' ? 4 : undefined,
       }}
     >
       {data.kind === 'note' ? (
@@ -106,6 +110,17 @@ export function WorkflowNodeView({ data, selected }: NodeProps<WorkflowNode>) {
             {meta.icon}
           </div>
           <div className="wf-node__label">{data.label}</div>
+          {data.kind === 'agent' && (
+            <div title={`${data.engine === 'codex' ? 'Codex' : 'DSH'} · ${data.engine === 'codex' ? data.roleId || 'codex-default' : 'Sub-agent'}`} style={{ fontSize: 10, opacity: 0.8, maxWidth: '95%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {data.engine === 'codex' ? 'Codex' : 'DSH'} · {data.engine === 'codex' ? data.roleId || 'codex-default' : 'Sub-agent'}
+            </div>
+          )}
+          {data.kind === 'trigger' && !!data.attachments?.length && <small>{data.attachments.length} 个文本附件</small>}
+          {run && (preview || run.running) && (
+            <div aria-label="实时运行预览，点击节点在右侧查看全文" aria-live="polite" style={{ fontSize: 10, lineHeight: 1.25, maxHeight: 26, overflow: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '95%' }}>
+              {run.running ? '◉ ' : ''}{previewValue.length > 180 ? '…' : ''}{preview || '等待输出…'}
+            </div>
+          )}
           {isLoop ? (
             targets.map((t) => (
               <Handle key={`h-${t.id}`} type="target" position={Position.Left} id={t.id} style={{ top: t.top }} className="wf-handle" />

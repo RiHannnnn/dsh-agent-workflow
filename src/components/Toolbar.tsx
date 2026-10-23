@@ -10,11 +10,13 @@
  * @module components/Toolbar
  */
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCanvasStore } from '../store/canvas.js'
 import type { WorkflowDocument, WorkflowNodeData } from '../model.js'
 import { ScheduleBoard } from './ScheduleBoard.js'
 import { HelpDoc } from './HelpDoc.js'
+import { runDagWorkflow, supportsDag, triggerInput } from '../runner.js'
+import { executeAgent, executeCode } from '../client-execution.js'
 
 
 /** JSON response of the host run routes. */
@@ -66,13 +68,17 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData)
   const workflowName = useCanvasStore((s) => s.workflowName)
   const setWorkflowName = useCanvasStore((s) => s.setWorkflowName)
-  const theme = useCanvasStore((s) => s.theme)
-  const toggleTheme = useCanvasStore((s) => s.toggleTheme)
   const nameRef = useRef<HTMLInputElement>(null)
   const [showBoard, setShowBoard] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const running = useCanvasStore(s => s.isRunning)
+  const setRunning = useCanvasStore(s => s.setRunning)
+  const [runStatus, setRunStatus] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => abortRef.current?.abort(), [])
 
-  const onRun = async () => {
+  const onRunLegacy = async () => {
+    const signal = abortRef.current!.signal
     const store = useCanvasStore.getState()
     const nodes = store.nodes
     const edges = store.edges
@@ -113,6 +119,7 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
     // Execute ONE node. Returns the value flowing out of it. When `stopAt` is
     // supplied, reaching that id (the loop/while node) ends a body sub-walk.
     const executeNode = async (id: string, input: string, ctxVisited: Set<string>, stopAt?: string): Promise<string> => {
+      if (signal.aborted) throw new Error('运行已停止')
       if (!byId.has(id)) return input
       if (id === stopAt) return input
       if (ctxVisited.has(id)) return input
@@ -144,7 +151,7 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
 
       try {
         if (d.kind === 'trigger' || d.kind === 'schedule') {
-          const value = d.text ?? ''
+          const value = triggerInput(n)
           setVal({ value })
           return await fanOut(value)
         } else if (d.kind === 'code') {
@@ -154,6 +161,7 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
           let val = ''
           try {
             const res = await fetch('/dsh-node-flow/run', {
+              signal,
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ program: d.code ?? '', language: d.language ?? 'typescript', input, timeout: parseInt(d.timeout ?? '', 10) || 0 }),
@@ -187,6 +195,7 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
           let out = ''
           try {
             const res = await fetch('/dsh-node-flow/run-agent', {
+              signal,
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ prompt, timeout: parseInt(d.timeout ?? '', 10) || 0, agentOptions }),
@@ -298,6 +307,46 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
     if (!ran) alert('工作流没有可执行的节点。')
   }
 
+  const onRun = async (): Promise<void> => {
+    if (abortRef.current || useCanvasStore.getState().isRunning) return
+    let doc: WorkflowDocument
+    try { doc = useCanvasStore.getState().exportDocument() }
+    catch (error) { setRunStatus(error instanceof Error ? error.message : String(error)); return }
+    const codex = doc.nodes.filter(n => n.data.kind === 'agent' && n.data.engine === 'codex')
+    const simple = supportsDag(doc)
+    if (!simple && codex.length) { setRunStatus('第一版 Codex 运行暂不支持 If/Switch/Loop/While/定时节点，请使用普通连线'); return }
+    if (!simple && doc.nodes.some(n => n.data.handoff === 'paragraph')) { setRunStatus('控制节点仅支持完整交接'); return }
+    if (codex.some(n => !n.data.cwd?.startsWith('/'))) { setRunStatus('请先为每个 Codex 节点填写绝对工作目录'); return }
+    const workspaces = [...new Set(codex.map(n => n.data.cwd!))]
+    const codeCount = doc.nodes.filter(n => n.data.kind === 'code').length
+    const incremental = codex.some(n => n.data.handoff === 'paragraph')
+    const warnings = [
+      codex.length ? `将用本机 Codex 运行 ${codex.length} 个节点（只读文件权限），内容会发送给 Codex 配置的模型服务。\n工作目录：\n${workspaces.join('\n')}` : '',
+      incremental ? '逐段模式会在上游完成前触发下游，每段是一次独立调用，单次工作流最多 32 次；不是共享会话。' : '',
+      codeCount ? `包含 ${codeCount} 个代码节点（可在宿主执行代码）。请确认你信任其代码和导入的工作流。` : '',
+      !simple ? '包含表达式/控制节点，使用原版完整交接模式；请确认你信任表达式。' : '',
+    ].filter(Boolean)
+    if (warnings.length && !window.confirm(warnings.join('\n\n') + '\n\n确认运行？')) return
+    const controller = new AbortController()
+    abortRef.current = controller; setRunning(true); setRunStatus('运行中：实时输出可在节点和右侧面板查看')
+    const store = useCanvasStore.getState()
+    store.clearActiveEdges()
+    for (const node of doc.nodes) updateNodeData(node.id, { lastRun: undefined })
+    try {
+      if (simple) await runDagWorkflow(doc, {
+        signal: controller.signal, runAgent: executeAgent, runCode: executeCode,
+        update: (id, patch) => updateNodeData(id, { lastRun: { logs: [], ...patch } }),
+        edge: store.markEdgeActive,
+      })
+      else await onRunLegacy()
+      setRunStatus(controller.signal.aborted ? '已停止' : '运行结束；请查看各节点结果')
+    } catch (error) {
+      setRunStatus(controller.signal.aborted ? '已停止' : `运行失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      abortRef.current = null; setRunning(false)
+    }
+  }
+
   const saveWorkflow = async (): Promise<void> => {
     const doc = useCanvasStore.getState().exportDocument()
     const json = JSON.stringify(doc, null, 2)
@@ -339,7 +388,8 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
   }
 
   const onImportFile = (file: File | undefined): void => {
-    if (!file) return
+    if (!file || running) return
+    if (file.size > 4 * 1024 * 1024) { alert('工作流文件不能超过 4 MiB'); return }
     const reader = new FileReader()
     reader.onload = () => {
       try {
@@ -392,16 +442,7 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
               <path d="M9.2 18.2h4.6" />
             </svg>
           </button>
-          <button
-            className={`wf-theme-toggle wf-theme-toggle--${theme}`}
-            onClick={toggleTheme}
-            title={theme === 'dark' ? '切换到浅色' : '切换到深色'}
-            aria-label={theme === 'dark' ? '切换到浅色' : '切换到深色'}
-          >
-            <span className="wf-theme-toggle__sun">☀️</span>
-            <span className="wf-theme-toggle__knob" />
-            <span className="wf-theme-toggle__moon">🌙</span>
-          </button>
+          <span className="wf-save">主题跟随 DSH</span>
           <label className="wf-btn">
             导入
             <input
@@ -422,9 +463,11 @@ export function Toolbar({ onExitNodeMode }: { onExitNodeMode?: () => void }) {
           </button>
         </div>
         <div className="wf-toolbar__primary-actions">
-          <button className="wf-btn wf-btn--primary" onClick={onRun}>
-            ▶ 运行
+          <span className="wf-run-status" role="status" aria-live="polite">{runStatus}</span>
+          <button className="wf-btn wf-btn--primary" disabled={running} onClick={() => void onRun()}>
+            {running ? '运行中…' : '▶ 运行'}
           </button>
+          {running && <button className="wf-btn wf-btn--danger" onClick={() => abortRef.current?.abort()}>停止</button>}
           {onExitNodeMode && (
             <button className="wf-btn wf-btn--exit" onClick={onExitNodeMode}>
               退出节点模式

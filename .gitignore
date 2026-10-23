@@ -1,4 +1,8 @@
 node_modules/
+.pnpm-store/
+.tmp*/
+.codex-schema*/
+.codex-protocol-tmp/
 dist/
 *.log
 .DS_Store
@@ -8,3 +12,36 @@ coverage/
 # npm 误生成（本项目用 pnpm）
 package-lock.json
 vite.config.ts.timestamp-*.mjs
+
+# 本地旧包；公开交付包仅放 downloads/，保留已跟踪的 lib/
+artifacts/
+
+# 环境、认证与私钥（示例模板可公开，仍须人工检查内容）
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.npmrc
+.netrc
+.pypirc
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+
+# 本机工具配置、认证与编辑器私有设置
+.codex/
+.dsh/
+.ssh/
+.aws/
+.azure/
+.config/gcloud/
+.obsidian/
+.idea/
+.vscode/

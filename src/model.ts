@@ -58,6 +58,18 @@ export type WorkflowNodeData = {
   /** Selected model route for the sub-agent (kind === 'agent'); stored as
    *  `"<provider>|<modelId>"`, empty means inherit the parent agent's model. */
   model?: string
+  /** Execution engine; omitted preserves the original DSH behavior. */
+  engine?: 'dsh' | 'codex'
+  /** Local Codex agent file stem, or codex-default. Never a host path. */
+  roleId?: string
+  /** Empty means the local Codex default model. */
+  codexModel?: string
+  /** Explicitly user-confirmed absolute working directory. */
+  cwd?: string
+  /** Paragraph delivery starts independent downstream calls, not a shared session. */
+  handoff?: 'complete' | 'paragraph'
+  /** Browser-read, embedded text only; never host filesystem references. */
+  attachments?: Array<{ name: string; text: string }>
   /** Condition expression (kind === 'if' | 'switch' | 'while'). */
   condition?: string
   /** Comma-separated case values (kind === 'switch'); each maps to a source handle. */
@@ -104,6 +116,163 @@ export type WorkflowDocument = {
   description?: string
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
+}
+
+/** Maximum UTF-8 payload of all embedded attachments in one workflow. */
+export const MAX_ATTACHMENT_BYTES = 1024 * 1024
+
+export function attachmentBytes(attachments: Array<{ name: string; text: string }>): number {
+  const encoder = new TextEncoder()
+  return attachments.reduce((sum, file) => sum + encoder.encode(file.text).byteLength, 0)
+}
+
+export function isAbsoluteWorkingDirectory(value: string): boolean {
+  return !/[\u0000-\u001f]/.test(value) && (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || /^\\\\[^\\]+\\[^\\]+/.test(value))
+}
+
+function invalid(path: string): never {
+  throw new Error(`无效工作流字段: ${path}`)
+}
+
+function record(value: unknown, path: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(path)
+  return value as Record<string, unknown>
+}
+
+/** Copy untrusted JSON without retaining references, prototypes or executable values. */
+function safeJson(value: unknown, path: string, depth = 0): unknown {
+  if (depth > 40) invalid(`${path} (嵌套过深)`)
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (Array.isArray(value)) return value.map((entry, i) => safeJson(entry, `${path}[${i}]`, depth + 1))
+  const source = record(value, path)
+  if (Object.getPrototypeOf(source) !== Object.prototype && Object.getPrototypeOf(source) !== null) invalid(path)
+  const copy: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(source)) {
+    if (key === '__proto__' || key === 'prototype' || key === 'constructor') invalid(`${path}.${key}`)
+    // Optional fields in live React Flow documents may legitimately be undefined.
+    if (entry !== undefined) copy[key] = safeJson(entry, `${path}.${key}`, depth + 1)
+  }
+  return copy
+}
+
+function stringField(obj: Record<string, unknown>, key: string, path: string, required = false): void {
+  if ((required || obj[key] !== undefined) && typeof obj[key] !== 'string') invalid(`${path}.${key}`)
+}
+
+function finiteField(obj: Record<string, unknown>, key: string, path: string, required = false): void {
+  if ((required || obj[key] !== undefined) && (typeof obj[key] !== 'number' || !Number.isFinite(obj[key]))) invalid(`${path}.${key}`)
+}
+
+function enumField(obj: Record<string, unknown>, key: string, values: string[], path: string): void {
+  if (obj[key] !== undefined && !values.includes(obj[key] as string)) invalid(`${path}.${key}`)
+}
+
+/** Validate imports before touching the canvas; preserve safe JSON extension fields. */
+export function validateWorkflowDocument(input: unknown): WorkflowDocument {
+  const doc = record(safeJson(input, 'document'), 'document')
+  if (doc.version !== 1) invalid('version')
+  stringField(doc, 'name', 'document', true)
+  stringField(doc, 'description', 'document')
+  if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) invalid('nodes/edges')
+  if (doc.nodes.length > 10000 || doc.edges.length > 50000) invalid('nodes/edges (数量过大)')
+  const ids = new Set<string>()
+  let totalAttachmentBytes = 0
+  for (const [i, value] of doc.nodes.entries()) {
+    const path = `nodes[${i}]`
+    const n = record(value, path)
+    stringField(n, 'id', path, true)
+    if (!n.id || ids.has(n.id as string)) invalid(`${path}.id`)
+    ids.add(n.id as string)
+    if (n.type !== undefined && n.type !== 'workflow') invalid(`${path}.type`)
+    n.type = 'workflow'
+    const position = record(n.position, `${path}.position`)
+    finiteField(position, 'x', `${path}.position`, true)
+    finiteField(position, 'y', `${path}.position`, true)
+    for (const key of ['selected', 'dragging', 'draggable', 'selectable', 'connectable', 'deletable', 'hidden', 'resizing', 'focusable']) {
+      if (n[key] !== undefined && typeof n[key] !== 'boolean') invalid(`${path}.${key}`)
+    }
+    for (const key of ['width', 'height', 'initialWidth', 'initialHeight', 'zIndex']) finiteField(n, key, path)
+    for (const key of ['className', 'parentId', 'dragHandle', 'ariaLabel']) stringField(n, key, path)
+    if (n.style !== undefined) {
+      const style = record(n.style, `${path}.style`)
+      for (const [key, entry] of Object.entries(style)) if (typeof entry !== 'string' && typeof entry !== 'number') invalid(`${path}.style.${key}`)
+    }
+    // Import only React Flow fields that were validated; extension metadata belongs in data.
+    const nodeFields = new Set(['id', 'type', 'position', 'data', 'style', 'width', 'height', 'initialWidth', 'initialHeight', 'zIndex', 'className', 'selected', 'dragging', 'draggable', 'selectable', 'connectable', 'deletable', 'hidden', 'resizing', 'focusable', 'ariaLabel', 'measured'])
+    for (const key of Object.keys(n)) if (!nodeFields.has(key)) delete n[key]
+    if (n.measured !== undefined) {
+      const measured = record(n.measured, `${path}.measured`)
+      finiteField(measured, 'width', `${path}.measured`)
+      finiteField(measured, 'height', `${path}.measured`)
+    }
+    const d = record(n.data, `${path}.data`)
+    enumField(d, 'kind', ['trigger', 'schedule', 'agent', 'if', 'switch', 'loop', 'while', 'code', 'output', 'note'], `${path}.data`)
+    if (d.kind === undefined) invalid(`${path}.data.kind`)
+    stringField(d, 'label', `${path}.data`, true)
+    for (const key of ['text', 'cron', 'timezone', 'prompt', 'model', 'condition', 'cases', 'mode', 'itemsExpr', 'count', 'maxIters', 'code', 'language', 'timeout', 'onError', 'template', 'notes', 'roleId', 'codexModel', 'cwd']) stringField(d, key, `${path}.data`)
+    enumField(d, 'engine', ['dsh', 'codex'], `${path}.data`)
+    enumField(d, 'handoff', ['complete', 'paragraph'], `${path}.data`)
+    enumField(d, 'mode', ['items', 'count'], `${path}.data`)
+    enumField(d, 'onError', ['stop', 'continue'], `${path}.data`)
+    if (d.collect !== undefined && typeof d.collect !== 'boolean') invalid(`${path}.data.collect`)
+    if (d.roleId && (/[\\/\u0000-\u001f]/.test(d.roleId as string) || d.roleId === '.' || d.roleId === '..')) invalid(`${path}.data.roleId`)
+    if (d.cwd && !isAbsoluteWorkingDirectory(d.cwd as string)) invalid(`${path}.data.cwd (必须是绝对目录)`)
+    if (d.attachments !== undefined) {
+      if (!Array.isArray(d.attachments) || d.attachments.length > 1000) invalid(`${path}.data.attachments`)
+      for (const [j, file] of d.attachments.entries()) {
+        const filePath = `${path}.data.attachments[${j}]`
+        const attachment = record(file, filePath)
+        stringField(attachment, 'name', filePath, true)
+        stringField(attachment, 'text', filePath, true)
+        if (!attachment.name || /[\u0000-\u001f]/.test(attachment.name as string)) invalid(`${filePath}.name`)
+        if ((attachment.text as string).includes('\u0000')) invalid(`${filePath}.text (不支持二进制)`)
+      }
+      totalAttachmentBytes += attachmentBytes(d.attachments as Array<{ name: string; text: string }>)
+      if (totalAttachmentBytes > MAX_ATTACHMENT_BYTES) invalid('attachments (总大小超过 1 MiB)')
+    }
+    if (d.lastRun !== undefined) {
+      const run = record(d.lastRun, `${path}.data.lastRun`)
+      for (const key of ['input', 'error', 'at']) stringField(run, key, `${path}.data.lastRun`, key === 'at')
+      if (!Array.isArray(run.logs) || run.logs.some((line) => typeof line !== 'string')) invalid(`${path}.data.lastRun.logs`)
+      finiteField(run, 'duration', `${path}.data.lastRun`)
+      if (run.running !== undefined && typeof run.running !== 'boolean') invalid(`${path}.data.lastRun.running`)
+      // Runtime logs are never restored from imported files.
+      delete d.lastRun
+    }
+  }
+  const edgeIds = new Set<string>()
+  for (const [i, value] of doc.edges.entries()) {
+    const path = `edges[${i}]`
+    const edge = record(value, path)
+    for (const key of ['id', 'source', 'target']) stringField(edge, key, path, true)
+    if (!edge.id || edgeIds.has(edge.id as string) || !ids.has(edge.source as string) || !ids.has(edge.target as string)) invalid(path)
+    edgeIds.add(edge.id as string)
+    for (const key of ['sourceHandle', 'targetHandle']) if (edge[key] !== null) stringField(edge, key, path)
+    for (const key of ['type', 'className', 'ariaLabel']) stringField(edge, key, path)
+    for (const key of ['selected', 'animated', 'hidden', 'deletable', 'selectable', 'focusable']) if (edge[key] !== undefined && typeof edge[key] !== 'boolean') invalid(`${path}.${key}`)
+    if (edge.data !== undefined) stringField(record(edge.data, `${path}.data`), 'label', `${path}.data`)
+    if (edge.label !== undefined && edge.label !== null && typeof edge.label !== 'string' && typeof edge.label !== 'number') invalid(`${path}.label`)
+    for (const field of ['style', 'labelStyle', 'labelBgStyle']) {
+      if (edge[field] === undefined) continue
+      const style = record(edge[field], `${path}.${field}`)
+      for (const [key, entry] of Object.entries(style)) if (typeof entry !== 'string' && typeof entry !== 'number') invalid(`${path}.${field}.${key}`)
+    }
+    const edgeFields = new Set(['id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'className', 'ariaLabel', 'selected', 'animated', 'hidden', 'deletable', 'selectable', 'focusable', 'data', 'label', 'style', 'labelStyle', 'labelBgStyle'])
+    for (const key of Object.keys(edge)) if (!edgeFields.has(key)) delete edge[key]
+  }
+  return doc as unknown as WorkflowDocument
+}
+
+/** Export a detached document without sensitive per-run inputs, logs or output. */
+export function exportWorkflowDocument(doc: WorkflowDocument): WorkflowDocument {
+  return validateWorkflowDocument({
+    ...doc,
+    nodes: doc.nodes.map((node) => {
+      const { lastRun: _lastRun, ...data } = node.data
+      return { ...node, data }
+    }),
+  })
 }
 
 /** Default dimensions per node kind (px). All square nodes share one size; agent stays a wide rectangle. */
@@ -155,6 +324,7 @@ export function toStepList(doc: WorkflowDocument): unknown[] {
     const step: Record<string, unknown> = { id: n.id, kind: d.kind, label: d.label }
     if (d.kind === 'trigger') {
       step.text = d.text
+      if (d.attachments) step.attachments = d.attachments.map((file) => ({ ...file }))
     } else if (d.kind === 'schedule') {
       step.text = d.text
       step.cron = d.cron
@@ -162,6 +332,9 @@ export function toStepList(doc: WorkflowDocument): unknown[] {
     } else if (d.kind === 'agent') {
       step.prompt = d.prompt
       if (d.model) step.model = d.model
+      for (const key of ['engine', 'roleId', 'codexModel', 'cwd', 'handoff', 'onError'] as const) {
+        if (d[key] !== undefined) step[key] = d[key]
+      }
       if (d.timeout) step.timeout = d.timeout
     } else if (d.kind === 'if') {
       step.condition = d.condition

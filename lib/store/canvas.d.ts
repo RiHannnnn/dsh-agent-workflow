@@ -15,6 +15,8 @@ type CanvasState = {
     selectedEdgeId: string | null;
     workflowName: string;
     theme: 'dark' | 'light';
+    isRunning: boolean;
+    setRunning: (running: boolean) => void;
     onNodesChange: (changes: NodeChange<WorkflowNode>[]) => void;
     onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void;
     onConnect: (conn: Connection) => void;
@@ -37,7 +39,7 @@ type CanvasState = {
     /** Build the ordered step list for ctx.workflows. */
     toSteps: () => unknown[];
     /** Load a saved document into the canvas. */
-    importDocument: (doc: WorkflowDocument) => void;
+    importDocument: (doc: unknown) => void;
 };
 export declare const useCanvasStore: import("zustand").UseBoundStore<import("zustand").StoreApi<CanvasState>>;
 export {};

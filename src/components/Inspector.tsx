@@ -9,7 +9,8 @@ import { useCanvasStore } from '../store/canvas.js'
 import { CodeEditor } from './CodeEditor.js'
 import { CodeEditorModal } from './CodeEditorModal.js'
 import expandArrowsIcon from '../assets/icons/expand-arrows-alt.svg'
-import type { WorkflowNodeData } from '../model.js'
+import { attachmentBytes, isAbsoluteWorkingDirectory, MAX_ATTACHMENT_BYTES, type WorkflowNodeData } from '../model.js'
+import { fetchAgentLibrary, type AgentLibraryResult } from '../agent-library-client.js'
 
 type AgentModel = { provider: string; id: string; name: string }
 
@@ -33,6 +34,74 @@ const KIND_LABELS: Record<WorkflowNodeData['kind'], string> = {
   note: 'Note',
 }
 
+function WorkingDirectoryField({ value, onSave }: { value: string; onSave: (value: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  const [error, setError] = useState('')
+  useEffect(() => { setDraft(value); setError('') }, [value])
+  return (
+    <div className="wf-field">
+      <label htmlFor="wf-agent-cwd">Codex 工作目录（留空使用本地默认）</label>
+      <input id="wf-agent-cwd" value={draft} placeholder="手动填写绝对工作目录" onChange={(event) => { setDraft(event.target.value); setError('') }} />
+      <button type="button" className="wf-btn" disabled={draft === value} onClick={() => {
+        const cwd = draft.trim()
+        if (cwd && !isAbsoluteWorkingDirectory(cwd)) { setError('请填写绝对目录，不支持 ~、相对路径或控制字符。'); return }
+        if (cwd && !window.confirm(`确认允许 Codex 使用以下工作目录？\n${cwd}\n请只选择您信任并授权的目录。`)) return
+        onSave(cwd)
+        setDraft(cwd)
+      }}>确认工作目录</button>
+      <small>仅保存手动填写的目录；不会浏览或读取任意主机文件。执行前需再次确认。</small>
+      {error && <span role="alert">{error}</span>}
+    </div>
+  )
+}
+
+function TextAttachments({ nodeId, files }: { nodeId: string; files: NonNullable<WorkflowNodeData['attachments']> }) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="wf-field">
+      <label htmlFor="wf-trigger-files">文本附件（合计 ≤ 1 MiB）</label>
+      <input id="wf-trigger-files" type="file" multiple disabled={busy} accept=".txt,.text,.json,.jsonl,.csv,.tsv,.md,.markdown,.yaml,.yml,.xml,.html,.htm,.log" onChange={(event) => {
+        const input = event.currentTarget
+        const selected = Array.from(input.files ?? [])
+        input.value = ''
+        if (selected.length === 0) return
+        setError('')
+        setBusy(true)
+        void (async () => {
+          for (const file of selected) {
+            const textMime = !file.type || file.type.startsWith('text/') || ['application/json', 'application/ld+json', 'application/x-ndjson', 'application/xml', 'application/yaml', 'application/x-yaml', 'application/csv'].includes(file.type)
+            if (!textMime || !/\.(txt|text|json|jsonl|csv|tsv|md|markdown|yaml|yml|xml|html?|log)$/i.test(file.name)) throw new Error(`不支持 ${file.name}：仅支持文本 / JSON / CSV / Markdown 等文本文件，不支持 PDF、Office 或二进制。`)
+          }
+          const allBefore = useCanvasStore.getState().nodes.flatMap((node) => node.data.attachments ?? [])
+          if (allBefore.length + selected.length > 1000 || attachmentBytes(allBefore) + selected.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_BYTES) throw new Error('附件总大小不能超过 1 MiB（最多 1000 个）。')
+          const added = await Promise.all(selected.map(async (file) => {
+            const text = await file.text()
+            if (text.includes('\u0000') || text.includes('\ufffd')) throw new Error(`${file.name} 不是受支持的 UTF-8 文本，拒绝作为二进制读取。`)
+            return { name: file.name, text }
+          }))
+          const store = useCanvasStore.getState()
+          const target = store.nodes.find((node) => node.id === nodeId)
+          if (!target) return
+          const all = store.nodes.flatMap((node) => node.data.attachments ?? [])
+          if (all.length + added.length > 1000 || attachmentBytes([...all, ...added]) > MAX_ATTACHMENT_BYTES) throw new Error('附件总大小不能超过 1 MiB（最多 1000 个）。')
+          store.updateNodeData(nodeId, { attachments: [...(target.data.attachments ?? []), ...added] })
+        })().catch((err: unknown) => setError(err instanceof Error ? err.message : '读取附件失败')).finally(() => setBusy(false))
+      }} />
+      <small>文件仅通过浏览器 File.text() 读取并内嵌保存，将与任务文字一起传给下游。请勿上传密钥或敏感数据。不支持 PDF / Office / 二进制。</small>
+      {busy && <span role="status">读取文本中…</span>}
+      {error && <span role="alert">{error}</span>}
+      {files.map((file, index) => (
+        <div key={`${index}-${file.name}`}>
+          <span>{file.name} · {attachmentBytes([file])} B</span>{' '}
+          <button type="button" className="wf-btn" aria-label={`移除 ${file.name}`} onClick={() => useCanvasStore.getState().updateNodeData(nodeId, { attachments: files.filter((_, i) => i !== index) })}>移除</button>
+          <details><summary>预览文本</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 180, overflow: 'auto' }}>{file.text.slice(0, 2000)}{file.text.length > 2000 ? '\n…（预览截断，保存和运行使用全文）' : ''}</pre></details>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Inspector() {
   const selectedId = useCanvasStore((s) => s.selectedId)
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === s.selectedId))
@@ -40,6 +109,19 @@ export function Inspector() {
   const removeNode = useCanvasStore((s) => s.removeNode)
   const [codeExpanded, setCodeExpanded] = useState(false)
   const [agentModels, setAgentModels] = useState<AgentModel[]>([])
+  const [library, setLibrary] = useState<AgentLibraryResult | null>(null)
+  const [libraryError, setLibraryError] = useState('')
+  const [roleQuery, setRoleQuery] = useState('')
+  const [libraryRefresh, setLibraryRefresh] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setLibraryError('')
+    void fetchAgentLibrary({ signal: controller.signal }).then(setLibrary).catch((err: unknown) => {
+      if (!controller.signal.aborted) setLibraryError(err instanceof Error ? err.message : '加载角色失败')
+    })
+    return () => controller.abort()
+  }, [libraryRefresh])
 
   // Load the available model routes once (for the agent-node model dropdown).
   useEffect(() => {
@@ -141,6 +223,8 @@ export function Inspector() {
         </label>
       )}
 
+      {d.kind === 'trigger' && <TextAttachments key={node.id} nodeId={node.id} files={d.attachments ?? []} />}
+
       {d.kind === 'schedule' && (
         <>
           <label className="wf-field">
@@ -181,15 +265,50 @@ export function Inspector() {
       {d.kind === 'agent' && (
         <>
           <label className="wf-field">
-            <span>模型</span>
-            <select value={d.model ?? ''} onChange={(e) => updateNodeData(node.id, { model: e.target.value })}>
-              <option value="">官方默认（继承）</option>
-              {agentModels.map((m) => (
-                <option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
-                  {m.name}（{m.provider}）
-                </option>
-              ))}
+            <span>执行引擎</span>
+            <select value={d.engine ?? 'dsh'} onChange={(event) => updateNodeData(node.id, { engine: event.target.value as 'dsh' | 'codex' })}>
+              <option value="dsh">DSH Sub-agent</option>
+              <option value="codex">本地 Codex</option>
             </select>
+          </label>
+          {d.engine === 'codex' ? (
+            <>
+              <label className="wf-field"><span>搜索本地角色</span><input type="search" value={roleQuery} onChange={(event) => setRoleQuery(event.target.value)} placeholder="角色名称 / 描述" /></label>
+              <label className="wf-field">
+                <span>Codex 角色</span>
+                <select value={d.roleId || 'codex-default'} onChange={(event) => updateNodeData(node.id, { roleId: event.target.value })}>
+                  <option value="codex-default">Codex 默认</option>
+                  {d.roleId && d.roleId !== 'codex-default' && !library?.agents.some((agent) => agent.id === d.roleId) && <option value={d.roleId}>{d.roleId}（角色库未找到，执行时将验证）</option>}
+                  {library?.agents.filter((agent) => agent.id !== 'codex-default' && (agent.id === d.roleId || `${agent.name} ${agent.id} ${agent.description}`.toLocaleLowerCase().includes(roleQuery.trim().toLocaleLowerCase()))).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                </select>
+              </label>
+              <button type="button" className="wf-btn" onClick={() => setLibraryRefresh((value) => value + 1)}>刷新角色</button>
+              {libraryError && <p role="alert">{libraryError}</p>}
+              {library && (!library.ok || !library.codexAvailable) && <p role="alert">本地 Codex 不可用，请检查安装和配置。</p>}
+              {library?.warnings?.map((warning, i) => <p key={i} role="status">{warning}</p>)}
+              <label className="wf-field"><span>Codex 模型（留空沿用本地默认）</span><input value={d.codexModel ?? ''} onChange={(event) => updateNodeData(node.id, { codexModel: event.target.value })} placeholder="不覆盖本地配置" /></label>
+              <WorkingDirectoryField key={node.id} value={d.cwd ?? ''} onSave={(cwd) => updateNodeData(node.id, { cwd })} />
+            </>
+          ) : (
+            <label className="wf-field">
+              <span>模型</span>
+              <select value={d.model ?? ''} onChange={(e) => updateNodeData(node.id, { model: e.target.value })}>
+                <option value="">官方默认（继承）</option>
+                {agentModels.map((m) => (
+                  <option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
+                    {m.name}（{m.provider}）
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="wf-field">
+            <span>向下游交付</span>
+            <select value={d.handoff ?? 'complete'} onChange={(event) => updateNodeData(node.id, { handoff: event.target.value as 'complete' | 'paragraph' })}>
+              <option value="complete">完整输出后交付</option>
+              <option value="paragraph">逐段交付</option>
+            </select>
+            <small>逐段仅普通 DAG 模式支持，会增加调用次数。每段在下游独立上下文执行，不是共享会话；Loop / While 不支持。</small>
           </label>
           <label className="wf-field">
             <span>system prompt</span>
@@ -396,7 +515,9 @@ export function Inspector() {
       )}
 
       {d.lastRun && (
-        <div className="wf-run">
+        <div className="wf-run" aria-live="polite">
+          <strong>{d.lastRun.running ? '运行中 · 实时输出' : d.lastRun.error ? '执行失败' : '最近运行结果'}</strong>
+          <small style={{ display: 'block' }}>以下为完整运行内容（不随工作流导出保存）。</small>
           {d.kind !== 'output' && d.kind !== 'trigger' && d.lastRun.input !== undefined && d.lastRun.input !== '' && (
             <label className="wf-field">
               <span>输入 Input</span>

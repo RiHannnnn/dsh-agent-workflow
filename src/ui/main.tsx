@@ -9,8 +9,9 @@
 import { createRoot } from 'react-dom/client'
 import '@xyflow/react/dist/style.css'
 import { Canvas } from '../components/Canvas.js'
+import '../components/canvas.css'
 
 const rootEl = document.getElementById('root')
 if (rootEl) {
-  createRoot(rootEl).render(<Canvas />)
+  createRoot(rootEl).render(<div className="wf-overlay" data-theme="dark" style={{ height: '100vh' }}><Canvas /></div>)
 }

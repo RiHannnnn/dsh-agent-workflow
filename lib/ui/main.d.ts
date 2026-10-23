@@ -6,3 +6,4 @@
  * @module ui/main
  */
 import '@xyflow/react/dist/style.css';
+import '../components/canvas.css';
