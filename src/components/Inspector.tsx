@@ -11,6 +11,7 @@ import { CodeEditorModal } from './CodeEditorModal.js'
 import expandArrowsIcon from '../assets/icons/expand-arrows-alt.svg'
 import { attachmentBytes, isAbsoluteWorkingDirectory, MAX_ATTACHMENT_BYTES, type WorkflowNodeData } from '../model.js'
 import { fetchAgentLibrary, type AgentLibraryResult } from '../agent-library-client.js'
+import { roleLabel, roleMatches } from '../agent-locale.js'
 
 type AgentModel = { provider: string; id: string; name: string }
 
@@ -277,9 +278,9 @@ export function Inspector() {
               <label className="wf-field">
                 <span>Codex 角色</span>
                 <select value={d.roleId || 'codex-default'} onChange={(event) => updateNodeData(node.id, { roleId: event.target.value })}>
-                  <option value="codex-default">Codex 默认</option>
+                  <option value="codex-default">Codex 默认（通用只读角色）</option>
                   {d.roleId && d.roleId !== 'codex-default' && !library?.agents.some((agent) => agent.id === d.roleId) && <option value={d.roleId}>{d.roleId}（角色库未找到，执行时将验证）</option>}
-                  {library?.agents.filter((agent) => agent.id !== 'codex-default' && (agent.id === d.roleId || `${agent.name} ${agent.id} ${agent.description}`.toLocaleLowerCase().includes(roleQuery.trim().toLocaleLowerCase()))).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  {library?.agents.filter((agent) => agent.id !== 'codex-default' && (agent.id === d.roleId || roleMatches(agent, roleQuery))).map((agent) => <option key={agent.id} value={agent.id}>{roleLabel(agent)}</option>)}
                 </select>
               </label>
               <button type="button" className="wf-btn" onClick={() => setLibraryRefresh((value) => value + 1)}>刷新角色</button>

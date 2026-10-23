@@ -21,20 +21,24 @@
 
 上游的代码、分支、循环和定时任务实现仍保留，但它们与新增 Codex 调度的支持范围不同，不应把全部上游能力视为已完成 Codex 联调。
 
+## 中文显示
+
+角色库界面、角色下拉选择与画布节点都显示中文名称与中文简介，并保留英文原名备查；中文和英文关键词都能搜索。汉化只发生在插件显示层，**不会修改** `~/.codex/agents` 里的原始 TOML，因此上游更新角色时不会被覆盖。尚未收录的自定义角色会原样显示英文。
+
 ## 获取开发包
 
-已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.2.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
+已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.3.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
 
-[下载 dsh-node-flow-0.1.0-codex.2.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.2.tgz)
+[下载 dsh-node-flow-0.1.0-codex.3.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.3.tgz)
 
 DSH「添加插件」的输入框需要网址，可直接填：
 
 ```text
-https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.2.tgz
+https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.3.tgz
 ```
 
 ```text
-SHA-256: 2df656b65b93e0ff31b1cd53f6fe919c188926968465dd2c620c2e4df9e1c6a9
+SHA-256: b033752f98498d41a0ef340103a5114f799b75a5a941c5fb6c41d0736df3cc66
 ```
 
 此文件是已验证开发包的原样复制，没有重打包；包内说明保留打包时版本，不包含本次仓库首页更新。它不是 npm 正式发布版。

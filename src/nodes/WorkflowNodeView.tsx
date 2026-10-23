@@ -16,6 +16,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { WorkflowNode, WorkflowNodeType } from '../model.js'
 import { NODE_SIZE } from '../model.js'
+import { roleDisplayName } from '../agent-locale.js'
 
 const KIND_META: Record<WorkflowNodeType, { color: string; icon: string; tag: string }> = {
   trigger: { color: '#34d399', icon: '▶', tag: 'TRIGGER' },
@@ -111,8 +112,8 @@ export function WorkflowNodeView({ data, selected }: NodeProps<WorkflowNode>) {
           </div>
           <div className="wf-node__label">{data.label}</div>
           {data.kind === 'agent' && (
-            <div title={`${data.engine === 'codex' ? 'Codex' : 'DSH'} · ${data.engine === 'codex' ? data.roleId || 'codex-default' : 'Sub-agent'}`} style={{ fontSize: 10, opacity: 0.8, maxWidth: '95%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {data.engine === 'codex' ? 'Codex' : 'DSH'} · {data.engine === 'codex' ? data.roleId || 'codex-default' : 'Sub-agent'}
+            <div title={`${data.engine === 'codex' ? 'Codex' : 'DSH'} · ${data.engine === 'codex' ? roleDisplayName(data.roleId) : '子 Agent'}`} style={{ fontSize: 10, opacity: 0.8, maxWidth: '95%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {data.engine === 'codex' ? 'Codex' : 'DSH'} · {data.engine === 'codex' ? roleDisplayName(data.roleId) : '子 Agent'}
             </div>
           )}
           {data.kind === 'trigger' && !!data.attachments?.length && <small>{data.attachments.length} 个文本附件</small>}

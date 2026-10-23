@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchAgentLibrary, type AgentLibraryResult } from '../agent-library-client.js'
+import { localizeRole, roleMatches } from '../agent-locale.js'
 import { useCanvasStore } from '../store/canvas.js'
 
 /** Local Codex roles. Drag metadata augments the existing React Flow kind MIME. */
@@ -16,8 +17,7 @@ export function AgentLibrary() {
     })
     return () => controller.abort()
   }, [refresh])
-  const search = query.trim().toLocaleLowerCase()
-  const agents = (library?.agents ?? []).filter((agent) => `${agent.name} ${agent.id} ${agent.description}`.toLocaleLowerCase().includes(search))
+  const agents = (library?.agents ?? []).filter((agent) => roleMatches(agent, query))
 
   return (
     <section className="wf-palette__group" aria-label="Codex 角色库">
@@ -31,31 +31,36 @@ export function AgentLibrary() {
       {!library && !error && <p role="status">加载本地角色…</p>}
       {library && (!library.ok || !library.codexAvailable) && <p role="status">本地 Codex 不可用；请安装并配置后刷新。</p>}
       {library?.warnings?.map((warning, i) => <p key={i} role="status">{warning}</p>)}
-      {library?.ok && library.codexAvailable && agents.map((agent) => (
+      {library?.ok && library.codexAvailable && agents.map((agent) => {
+        const zh = localizeRole(agent)
+        return (
         <button
           key={agent.id}
           type="button"
           className="wf-palette__item"
           style={{ width: '100%', color: 'inherit', background: 'transparent', fontFamily: 'inherit' }}
-          title={agent.description || agent.id}
+          title={`${zh.description || agent.id}\n\n英文原名：${agent.name}\n${agent.description}`}
           draggable
           onDragStart={(event) => {
             event.dataTransfer.setData('application/reactflow', 'agent')
-            event.dataTransfer.setData('application/dsh-agent-role', JSON.stringify({ id: agent.id, name: agent.name }))
+            event.dataTransfer.setData('application/dsh-agent-role', JSON.stringify({ id: agent.id, name: zh.name }))
             event.dataTransfer.effectAllowed = 'move'
           }}
           onClick={() => {
             const store = useCanvasStore.getState()
-            const id = store.addNodeAt('agent', agent.name, { x: 160 + Math.random() * 240, y: 120 + Math.random() * 240 })
+            const id = store.addNodeAt('agent', zh.name, { x: 160 + Math.random() * 240, y: 120 + Math.random() * 240 })
             store.updateNodeData(id, { engine: 'codex', roleId: agent.id, handoff: 'complete', timeout: '120' })
           }}
         >
           <span className="wf-palette__icon" style={{ background: '#a78bfa' }}>🤖</span>
           <span className="wf-palette__label" style={{ whiteSpace: 'normal', textAlign: 'left' }}>
-            {agent.name}<small style={{ display: 'block', opacity: 0.7 }}>Codex · {agent.description || agent.id}</small>
+            {zh.name}
+            <small style={{ display: 'block', opacity: 0.7 }}>{zh.description || agent.id}</small>
+            {zh.localized && <small style={{ display: 'block', opacity: 0.45 }}>Codex · {agent.name}</small>}
           </span>
         </button>
-      ))}
+        )
+      })}
       {library?.ok && library.codexAvailable && agents.length === 0 && <p>没有匹配的角色。</p>}
     </section>
   )
