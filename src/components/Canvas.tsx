@@ -12,6 +12,7 @@ import { WorkflowNodeView } from '../nodes/WorkflowNodeView.js'
 import { Toolbar } from './Toolbar.js'
 import { Inspector } from './Inspector.js'
 import { NodePalette } from './NodePalette.js'
+import { ExecutionPanel } from './ExecutionPanel.js'
 
 const nodeTypes = { workflow: WorkflowNodeView }
 
@@ -41,8 +42,12 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
   const selectEdge = useCanvasStore((s) => s.selectEdge)
   const addNodeAt = useCanvasStore((s) => s.addNodeAt)
   const selectedId = useCanvasStore((s) => s.selectedId)
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  const running = useCanvasStore((s) => s.isRunning)
+  const [paletteOpen, setPaletteOpen] = useState(true)
+  const [mode, setMode] = useState<'editor' | 'executions'>('editor')
+  const [inspectionOpen, setInspectionOpen] = useState(false)
   const rfRef = useRef<RFInstance | null>(null)
+  useEffect(() => { if (running) setInspectionOpen(true) }, [running])
   const renderedEdges = useMemo(() => {
     const activeIds = new Set(activeEdgeIds)
     return edges.map((edge) => {
@@ -58,8 +63,9 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
   // Guarded so it never fires while typing in an input/textarea/select or a contenteditable.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if (mode !== 'editor' || running || (e.key !== 'Delete' && e.key !== 'Backspace')) return
       const t = e.target as HTMLElement | null
+      if (t?.closest('.wf-execution')) return
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
         return
       }
@@ -74,7 +80,7 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [mode, running])
 
   const onDragOver = (e: React.DragEvent): void => {
     e.preventDefault()
@@ -83,6 +89,7 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
 
   const onDrop = (e: React.DragEvent): void => {
     e.preventDefault()
+    if (mode !== 'editor' || running) return
     const kind = e.dataTransfer.getData('application/reactflow') as WorkflowNodeType
     if (!Object.hasOwn(DEFAULT_LABELS, kind) || !rfRef.current) return
     const pos = rfRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY })
@@ -98,9 +105,21 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
   }
 
   return (
-    <div className="wf-shell">
+    <div className={`wf-shell wf-workbench wf-workbench--${mode}`}>
       <Toolbar onExitNodeMode={onExitNodeMode} />
+      <div className="wf-workbench__bar">
+        <nav className="wf-workbench__modes" aria-label="工作台视图">
+          <button type="button" aria-pressed={mode === 'editor'} onClick={() => setMode('editor')}>编辑器</button>
+          <button type="button" aria-pressed={mode === 'executions'} onClick={() => { setMode('executions'); setInspectionOpen(true) }}>执行检查</button>
+        </nav>
+        <span className="wf-workbench__scope">DSH 原生执行 · 阶段一</span>
+        <span className="wf-workbench__counts">{nodes.length} 节点 · {edges.length} 连接</span>
+        <button type="button" className="wf-workbench__toggle" aria-expanded={paletteOpen} aria-controls="wf-workbench-palette" disabled={mode !== 'editor' || running} onClick={() => setPaletteOpen((open) => !open)}>节点 / Agent</button>
+        <button type="button" className="wf-workbench__toggle" aria-expanded={inspectionOpen} aria-controls="wf-workbench-inspection" onClick={() => { if (mode === 'executions') setMode('editor'); setInspectionOpen((open) => !open) }}>执行数据</button>
+      </div>
       <div className="wf-main">
+        {paletteOpen && mode === 'editor' && !running && <aside id="wf-workbench-palette" className="wf-workbench__palette" aria-label="节点和 Agent 库"><NodePalette /></aside>}
+        <div className="wf-workbench__center">
         <div className="wf-canvas">
           <ReactFlow
             nodes={nodes}
@@ -125,6 +144,9 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
               rfRef.current = inst as unknown as RFInstance
             }}
             fitView
+            nodesDraggable={mode === 'editor' && !running}
+            nodesConnectable={mode === 'editor' && !running}
+            edgesReconnectable={mode === 'editor' && !running}
             proOptions={{ hideAttribution: true }}
             deleteKeyCode={null}
           >
@@ -140,12 +162,13 @@ export function Canvas({ onExitNodeMode }: { onExitNodeMode?: () => void } = {})
               }}
             />
           </ReactFlow>
-          <button className="wf-canvas__add" onClick={() => setPaletteOpen((v) => !v)}>
-            {paletteOpen ? '✕' : '➕ 添加节点'}
-          </button>
-          {paletteOpen && <NodePalette />}
+          {nodes.length === 1 && edges.length === 0 && mode === 'editor' && <div className="wf-workbench__hint">从节点库添加节点，连接端口构建工作流。仅点击「运行」后才会执行。</div>}
         </div>
-        {selectedId && <Inspector />}
+        {inspectionOpen && <div id="wf-workbench-inspection" className="wf-workbench__inspection">
+          <ExecutionPanel nodes={nodes} selectedId={selectedId} running={running} expanded={mode === 'executions'} onSelect={select} onExpand={() => setMode((current) => current === 'editor' ? 'executions' : 'editor')} onClose={() => { setInspectionOpen(false); setMode('editor') }} />
+        </div>}
+        </div>
+        {selectedId && mode === 'editor' && !running && <Inspector />}
       </div>
     </div>
   )

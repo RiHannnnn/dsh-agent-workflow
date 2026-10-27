@@ -1,15 +1,15 @@
 /**
- * Display-only Chinese localization for local Codex roles.
- *
- * The role files under CODEX_HOME/agents are never modified: their English
- * names/descriptions stay the source of truth and remain visible in tooltips.
- * Unknown roles fall back to the English metadata unchanged.
+ * Static display-only Chinese metadata for the DSH workflow role library.
+ * Original skill instructions and execution identifiers are never modified.
+ * Legacy role translations remain available for older workflow documents.
  */
+import { RESIDENT_AGENT_ZH, RESIDENT_SKILL_IDS } from './resident-agent-zh.js'
 export type RoleLike = { id: string; name: string; description: string }
 export type LocalizedRole = { name: string; description: string; localized: boolean; englishName: string }
 
 /** id → [中文名称, 中文简介]. Keep entries concise and faithful to the source role. */
 const ZH: Record<string, [string, string]> = {
+  'dsh-default': ['DSH 默认角色', '继承所选 DSH 父会话的模型、目录与权限；不保证只读。'],
   'codex-default': ['Codex 默认角色', '使用本机 Codex 默认配置的通用只读角色。'],
   'engineering-backend-architect': ['后端架构师', '设计可扩展的后端系统、数据库架构与 API。'],
   'engineering-devops-automator': ['DevOps 自动化工程师', '基础设施自动化、CI/CD 流水线与云运维。'],
@@ -31,6 +31,12 @@ const ZH: Record<string, [string, string]> = {
   'testing-test-results-analyzer': ['测试结果分析师', '评估测试结果、质量指标并提炼可执行改进建议。'],
   'testing-tool-evaluator': ['技术工具评估师', '评估、试用并推荐可提升生产力的工具与平台。'],
   'testing-workflow-optimizer': ['工作流优化师', '分析并自动化各业务职能的流程，提升整体效率。'],
+  ...RESIDENT_AGENT_ZH,
+}
+
+// Accept both filesystem directory ids and DSH's registered skill names.
+for (const [directory, skillName] of Object.entries(RESIDENT_SKILL_IDS)) {
+  ZH[skillName] = RESIDENT_AGENT_ZH[directory]
 }
 
 export function localizeRole(role: RoleLike): LocalizedRole {

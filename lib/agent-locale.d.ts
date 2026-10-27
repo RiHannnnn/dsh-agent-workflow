@@ -1,10 +1,3 @@
-/**
- * Display-only Chinese localization for local Codex roles.
- *
- * The role files under CODEX_HOME/agents are never modified: their English
- * names/descriptions stay the source of truth and remain visible in tooltips.
- * Unknown roles fall back to the English metadata unchanged.
- */
 export type RoleLike = {
     id: string;
     name: string;

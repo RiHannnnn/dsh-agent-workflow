@@ -1,8 +1,8 @@
 {
   "name": "dsh-node-flow",
-  "version": "0.1.0-codex.5",
+  "version": "0.2.0-dsh.1",
   "private": true,
-  "description": "DSH native Agent workflow canvas with a local Codex role library, live output and bounded paragraph handoff.",
+  "description": "DSH-native n8n-style workflow workbench with Chinese role metadata, execution inspection and bounded caller-owned Agent runs.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -29,6 +29,9 @@
     "cordis.patch.yml",
     "README.md",
     "README.local.md",
+    "NOTICE.md",
+    "N8N-ROADMAP.md",
+    "VERIFICATION.md",
     "locale/*.json",
     "icon.svg"
   ],

@@ -96,7 +96,9 @@ export async function listDshAgents(home: string): Promise<{ agents: DshAgent[];
 export async function readDshAgentBody(home: string, id: string): Promise<string> {
   if (!idPattern.test(id)) throw new Error('无效的角色标识')
   const directory = await realpath(skillsDir(home))
-  const text = await readBounded(join(directory, id, 'SKILL.md'), AGENT_LIMITS.bodyBytes)
+  const role = join(directory, id)
+  if (await realpath(role) !== role || !(await lstat(role)).isDirectory()) throw new Error('角色目录不能是符号链接')
+  const text = await readBounded(join(role, 'SKILL.md'), AGENT_LIMITS.bodyBytes)
   const { body } = splitFrontmatter(text)
   if (!body.trim()) throw new Error('角色说明为空')
   return body.trim()

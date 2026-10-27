@@ -112,8 +112,8 @@ export function WorkflowNodeView({ data, selected }: NodeProps<WorkflowNode>) {
           </div>
           <div className="wf-node__label">{data.label}</div>
           {data.kind === 'agent' && (
-            <div title={`${data.engine === 'codex' ? 'Codex' : 'DSH'} · ${data.engine === 'codex' ? roleDisplayName(data.roleId) : '子 Agent'}`} style={{ fontSize: 10, opacity: 0.8, maxWidth: '95%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {data.engine === 'codex' ? 'Codex' : 'DSH'} · {data.engine === 'codex' ? roleDisplayName(data.roleId) : '子 Agent'}
+            <div title={`${data.engine === 'codex' ? 'Codex' : 'DSH'} · ${roleDisplayName(data.roleId || (data.engine === 'codex' ? 'codex-default' : 'dsh-default'))}`} style={{ fontSize: 10, opacity: 0.8, maxWidth: '95%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {data.engine === 'codex' ? 'Codex' : 'DSH'} · {roleDisplayName(data.roleId || (data.engine === 'codex' ? 'codex-default' : 'dsh-default'))}
             </div>
           )}
           {data.kind === 'trigger' && !!data.attachments?.length && <small>{data.attachments.length} 个文本附件</small>}

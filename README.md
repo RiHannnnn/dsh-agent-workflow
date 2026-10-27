@@ -1,85 +1,32 @@
-# DSH Agent Workflow · Codex 开发版
+# DSH Agent Workflow · n8n 式工作台（开发中）
 
-> 面向 DeepSeek Harness 的 **Codex 角色库 + DSH 原生画布 + 真实增量事件 / 逐段 handoff** 工作流插件。
+在 **DeepSeek Harness 内**编排输入、DSH Agent、代码、条件和输出。目标是接近 n8n 的工作流产品，而不是每个节点另起一个 Codex CLI。
 
-本仓库计划公开于 [RiHannnnn/dsh-agent-workflow](https://github.com/RiHannnnn/dsh-agent-workflow)。当前版本为 `dsh-node-flow@0.1.0-codex.2`，是在 [CodermanYHZ/dsh-node-flow](https://github.com/CodermanYHZ/dsh-node-flow) 的 commit [`21cf06fa80b042db16b41cb6908c919042a5bfcc`](https://github.com/CodermanYHZ/dsh-node-flow/commit/21cf06fa80b042db16b41cb6908c919042a5bfcc) 之上的本地扩展，保留上游 MIT 许可证和版权归属。仓库名称改变，插件包名仍为 `dsh-node-flow`。
+**当前体验包为 `0.2.0-dsh.1`，不是完整 n8n，尚未完成真实 DSH GUI／模型端到端验收。** 本版包含新工作台与受限 DSH 原生执行；旧 codex.5 包不包含这些修复。完整范围见 [交付路线](./N8N-ROADMAP.md)。
 
-**这是开发版，不是已上线可用的产品。** 已有本地原生插件构建和 57 项 mock 自动测试通过记录；尚未在真实 DSH 中验证入口、样式、插件共存、Codex 登录及真实模型端到端交接。构建通过不代表宿主已加载，也不代表真实模型可用。详见 [验证记录](<VERIFICATION.md>)。
+## 当前源码实现
 
-## 解决什么问题
+- **编辑工作台**：左侧节点／Agent 库、中间拖拽画布、右侧参数，保留导入导出和连线。
+- **执行检查**：查看各节点当前最近一次输入、输出、错误、日志、状态和耗时；不是持久执行历史，循环只保留最后一次结果。
+- **中文角色库**：支持43个常驻角色的静态中文显示与双语搜索；角色从 DSH 技能目录发现，未收录的角色保留原文，不改原始技能指令。
+- **DSH 原生执行**：调用宿主 startActivation／spawn，由工作流持有执行句柄；选择确切父会话，传递节点模型；不回退 CLI 或 fork。
+- **受限运行与停止**：服务端每轮最多4次外层 Agent 调用、全局并发2、最长10分钟；断开、超时和卸载等待真正清理，清理失败则禁止新执行。
+- **完整交接**：当前 DSH Agent 完成后交接结果；NDJSON 状态帧不是 token 实时增量，不宣称已支持逐段执行。
 
-把本地 Codex 角色放到 DSH 的原生工作流画布上，通过输入、角色和输出节点组织多步骤任务；在上游生成内容时查看真实增量输出，并按需让下游提前处理已完成的段落，而不必总是等整篇结果结束。
+HTTP 请求、凭据管理、持久执行历史、可靠触发器和子工作流仍待后续批次。If/Switch/Loop/While 与代码节点保留原有执行器，不等于已经兼容 n8n 的 JSON items 和恢复语义。旧无预算 Agent 路由已停用，自动任务中的 Agent 暂时明确拒绝执行，避免绕过本轮保护。
 
-## 当前实现
+## 权限与费用
 
-- **原生画布**：向 DSH 的 main/sidebar 插槽贡献「Agent 工作流」入口，不替换应用根节点、不挂独立 iframe。
-- **Codex 角色库**：从 `CODEX_HOME/agents`（未设置时使用 Codex 默认主目录）发现 TOML 角色，支持搜索、点击加入和拖拽。角色指令进入 Codex `developerInstructions`，任务资料进入 user 输入；不是给每个角色另装一套模型。
-- **真实增量事件**：通过 Codex app-server stdio JSON-RPC 接收增量事件，经同源 NDJSON 路由送到浏览器；不是定时器模拟打字，也不把 JSONL 日志冒充 token 流。这里描述的是实现方式，真实模型联调仍待验证。
-- **完整 / 逐段 handoff**：完整模式等上游完成；逐段模式按空行划分段落，在上游结束前把已形成的段交给下游。
-- **普通无环图执行**：支持串行、并行、完整输入汇合、实时文字、输入输出查看、日志和错误查看，以及手动停止。
-- **输入与分享**：输入节点支持文本及合计不超过 1 MiB 的 UTF-8 文本附件；工作流可导入导出。导出剔除运行快照、日志和输出，但嵌入附件仍会保留，分享前必须检查。
+- DSH 子 Agent 继承所选父会话的目录、工具与权限，**不是 Codex 的只读沙箱**。只运行信任的工作流、代码和表达式。
+- 点击运行前会确认风险；导入、浏览节点、静态汉化、构建和模拟测试不会主动调用模型。明确运行才会向所选模型服务发送资料，可能产生费用。
+- 调用数、并发、字节限制、4096单次输出 token 设置都**不是累计金额或总 token 硬预算**；子 Agent 内部步骤、工具及提供方计量还需要进一步治理。
+- 同源 loopback 和内存 capability 防跨站触发，不是多用户身份认证；同源恶意插件不在该保护边界内。不要把开发插件暴露到公网。
+- 不把密钥粘进节点、任务文本或导出文件。目前尚未提供安全凭据库；分享前检查内嵌附件。
+- 导出不带运行快照、日志或输出；临时执行授权不进入工作流文档。
 
-上游的代码、分支、循环和定时任务实现仍保留，但它们与新增 Codex 调度的支持范围不同，不应把全部上游能力视为已完成 Codex 联调。
+## 本地开发
 
-## 全部在 DSH 内完成
-
-- **角色库来自 DSH**：直接读取 `~/.dsh/skills/*/SKILL.md`，你已安装的 184 个 Agency Agents 角色全部可选，不再读取 Codex 的 agents 目录，也不需要 Codex 登录或运行 Codex 进程。
-- **执行走 DSH 模型**：角色正文作为指令注入，由当前 DSH 的会话与子 Agent 运行，不再要求填写工作目录。
-- **中文显示**：角色库、角色下拉与画布节点显示中文名与中文简介，保留英文原名；中英文关键词都能搜索。只改显示层，不改 `~/.dsh/skills` 原始文件。
-- 未收录的自定义技能自动回退英文显示。
-
-## 获取开发包
-
-已验证包以原始字节放在 [downloads 开发包](<downloads/dsh-node-flow-0.1.0-codex.5.tgz>)，已上传并核对：远端下载内容与本地包 SHA-256 完全一致。
-
-[下载 dsh-node-flow-0.1.0-codex.5.tgz](https://github.com/RiHannnnn/dsh-agent-workflow/raw/refs/heads/main/downloads/dsh-node-flow-0.1.0-codex.5.tgz)
-
-DSH「添加插件」的输入框需要网址，可直接填：
-
-```text
-https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.1.0-codex.5.tgz
-```
-
-```text
-SHA-256: bf3352f5320add7d950e49d3fc6d1846c0a646ef969c3d4cd3389d6d4b34c982
-```
-
-此文件是已验证开发包的原样复制，没有重打包；包内说明保留打包时版本，不包含本次仓库首页更新。它不是 npm 正式发布版。
-
-### 试用前提与操作顺序（尚未端到端验证）
-
-需要支持原生插件及所需插槽/API 的 DSH、本地可用的 Codex CLI 和用户自行配置的登录/模型服务。当前没有经过真实宿主验证的兼容版本矩阵。
-
-1. 先核对下载包的 SHA-256，再由用户通过 DSH 已认证的插件管理界面添加并启用；是否需要刷新或重启，以宿主实际反馈为准，不直接修改应用安装包或 profile。
-2. 在侧边栏打开「Agent 工作流」→「添加节点」→「Codex 角色库」。如果入口没有出现，不要以构建通过当作安装成功。
-3. 导入 [逐段交接示例](<examples/codex-paragraph.workflow.json>)，或手动连接输入、两个 Codex 角色和输出节点。导入本身不会执行。
-4. 为 Codex 节点填写自己机器上实际存在的工作目录并确认；模型留空时沿用本机 Codex 默认配置。
-5. 逐段试验时要求上游每个条目单独一段、段落间留空行，再选择逐段交接。
-6. 运行前核对资料发送、费用、目录、调用次数和代码节点风险；只在明确确认后运行。安装、重启和真实模型测试均不是本次发布清理执行的操作。
-
-详细字段、安全边界和本地说明见 [开发说明](<README.local.md>)。该文档与 [验证记录](<VERIFICATION.md>) 保留既有本地开发记录，不是生产可用承诺。
-
-## 逐段交接的边界
-
-- 每个输入段触发下游一次独立调用，不共享会话记忆；下游不能假定自己看到了整篇资料。
-- 普通图最多 64 个执行节点、128 条边；并发最多 2 个任务，每次运行最多 32 次 Agent 调用。
-- 每条增量边最多排队 32 段，每段 UTF-8 最大 64 KiB；节点结果与 Codex 请求提示最大 2 MiB，HTTP 请求体最大 4 MiB。超限停止并提示，不提供无限吞吐保证。
-- 逐段节点暂不支持直接进入多路汇合，需要先用完整交接节点聚合；Codex 暂不接 If / Switch / Loop / While 或定时任务。
-- 已交付的段不能回滚。选择失败后继续时，保留已交付段并另交付一次空输入；需要严格原子性时使用完整交接。
-- PDF、Office、图片与二进制附件不在当前范围。原版控制流与新增普通图调度语义不能混用推断。
-
-## 权限、隐私与费用
-
-- Codex 请求固定只读文件沙箱和 `approvalPolicy: never`；若启动返回更宽权限，在提交任务前拒绝继续。**只读不等于只能读取所选目录**，不要向不可信角色或提示词开放敏感工作区。
-- 实现会关闭 hooks、plugins、apps、多 Agent、web search、notify、登录 shell 和发现的 MCP；对无法确定或不安全的配置拒绝运行，但不宣称可隔离恶意同用户进程或消除配置读取竞争窗口。
-- 本地同源 loopback 与每次加载的 capability 只用于防跨站触发，不是多用户认证，不能防同源恶意插件。不要把此开发插件暴露为公网服务。
-- 原版代码节点和表达式可以执行用户代码，不享有 Codex 只读保证。仅运行可信工作流；资料标记也不是完整的提示注入防线。
-- 点击运行会使用本机 Codex 配置的模型服务，可能向该服务发送资料并产生费用。角色库扫描、构建与 mock 测试不调用模型。
-- 不要上传真实 Codex 配置、认证文件、依赖目录、临时协议 schema 或个人资料目录；分享工作流前检查附件内容。
-
-## 本地开发与验证范围
-
-使用 Node.js 22+ 和 pnpm。以下是开发流程说明，本次公开发布清理没有安装依赖、重建、重打包或调用模型：
+使用 Node.js 22+ 与 pnpm：
 
 ```sh
 pnpm install --ignore-scripts
@@ -88,13 +35,26 @@ pnpm run build
 pnpm run test
 ```
 
-默认构建只生成 DSH 原生插件；独立演示保留为可选 `build:demo`，不是当前 DSH 页面或交付验证路径。已有记录中，可选演示因 macOS 对 Rollup 原生扩展的 Team ID 检查而构建失败，未绕过系统检查。
+本轮原生构建及91项自动测试通过；测试使用合成数据和模拟服务，没有调用真实模型。构建通过不代表宿主已加载，不代表 GUI／模型连通已通过。详见 [验证记录](./VERIFICATION.md)。
 
-已有 57 项测试使用 synthetic 配置、mock transport 和模拟子进程，覆盖角色元数据、目录/链接校验、同源/capability、权限策略、JSON-RPC 增量、取消与超时、无环图汇合、上游未完成时下游启动、UTF-8 分帧、断流与导入校验。**不覆盖真实登录、真实模型服务、浏览器布局或真实 DSH 的端到端运行。**
+默认 build 构建原生插件，不是替代 DSH 服务。独立 build:demo 不能替代宿主验收；先前 macOS Rollup 原生扩展签名问题没有通过关闭系统检查绕过。
+
+## 下载与升级状态
+
+体验包：[dsh-node-flow-0.2.0-dsh.1.tgz](./downloads/dsh-node-flow-0.2.0-dsh.1.tgz)。在 DSH 的插件管理中添加以下安装地址，安装后启用「Agent 工作流」：
+
+```text
+https://raw.githubusercontent.com/RiHannnnn/dsh-agent-workflow/main/downloads/dsh-node-flow-0.2.0-dsh.1.tgz
+```
+
+包名仍为 dsh-node-flow，将升级已有旧版。仓库保留的历史 codex.5 包不包含本批工作台、执行票据和取消修复。需要重启时由用户自行确认；打包与提供安装地址不代表当前桌面已安装成功。
+
+后续通过已认证的 DSH 插件管理界面升级，并在现有 GUI 验证。不会手改桌面 profile、提取浏览器凭据、自动重启或启动替代服务器。
 
 ## 来源与许可证
 
-- 上游项目：[CodermanYHZ/dsh-node-flow](https://github.com/CodermanYHZ/dsh-node-flow)，Copyright (c) 2025 CodermanYHZ。
-- 本地扩展以仓库名 `dsh-agent-workflow` 整理公开；保留上游 [MIT License](<LICENSE>)，不暗示上游维护者为此扩展背书。
-- 第三方组件保留各自许可证，说明见 [NOTICE](<NOTICE.md>)；本仓库不附带用户的 Agency Agents TOML 角色、真实 Codex 配置或认证文件，也不声称已获得未核实的第三方授权。
-- [英文 README](<README.en.md>) 保留上游介绍，尚未同步本扩展，请以本中文首页说明当前开发版范围。
+本项目基于 [CodermanYHZ/dsh-node-flow](https://github.com/CodermanYHZ/dsh-node-flow) 的 commit 21cf06fa80b042db16b41cb6908c919042a5bfcc 扩展，保留上游 Copyright (c) 2025 CodermanYHZ 和 [MIT License](./LICENSE)。仓库为 [RiHannnnn/dsh-agent-workflow](https://github.com/RiHannnnn/dsh-agent-workflow)，不暗示上游为此扩展背书。
+
+第三方组件说明见 [NOTICE](./NOTICE.md)。不打包用户技能正文、认证文件、真实本地配置、个人审计报告或备份。
+
+[README.local.md](./README.local.md)、[英文 README](./README.en.md) 与验证记录中的历史章节保留早期上游／Codex 开发资料；与当前范围不一致时，以本首页及交付路线为准。

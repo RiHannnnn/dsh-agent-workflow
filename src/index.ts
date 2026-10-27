@@ -5,8 +5,8 @@
  * host, plus a scheduled-task engine (cron → host graph walker).
  *
  * - `/dsh-node-flow/run` — execute a code node via `ctx.codeRuntime`.
- * - `/dsh-node-flow/run-agent` — delegate an agent node to a DSH
- *   subagent via `ctx.subagents`, parented on a live root agent.
+ * - `/dsh-node-flow/run-agent` — retired (410); Agent nodes use the
+ *   bounded caller-owned DSH routes registered by dsh-routes.
  * - `/dsh-node-flow/{schedule,schedules,runs,models}` — schedule/list/runs
  *   management and the agent model dropdown.
  *
@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { validateWorkflowDocument, type WorkflowDocument, type WorkflowEdge, type WorkflowNode, type WorkflowNodeData } from './model.js'
-import { registerDshAgentRoutes, type DshContext } from './dsh-routes.js'
+import { registerDshAgentRoutes, isDshSameOrigin, type DshContext } from './dsh-routes.js'
 import { triggerInput } from './runner.js'
 export const name = 'dsh-node-flow'
 export const inject = ['webServer'] as const
@@ -91,17 +91,8 @@ interface LlmLike {
   listModels(provider: string): Promise<Array<{ provider: string; id: string; name?: string }>>
 }
 
-/** True when the request Origin matches its Host (same-origin gate for POST). */
-function sameOrigin(request: IncomingMessage): boolean {
-  const origin = request.headers.origin
-  const host = request.headers.host
-  if (!origin || !host) return false
-  try {
-    return new URL(origin).host === host
-  } catch {
-    return false
-  }
-}
+/** Apply the same strict loopback/scheme/port gate to code, model and schedule routes. */
+const sameOrigin = isDshSameOrigin
 
 /** Read a JSON request body with a size cap; rejects oversized payloads. */
 async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unknown> {
@@ -579,46 +570,9 @@ async function runDocumentGraph(ctx: Context, doc: WorkflowDocument, initialInpu
         }
         return await fanOut(val || logs.join('\n'))
       } else if (d.kind === 'agent') {
-        const received = input
-        const prompt = [received, d.prompt ?? ''].map((s) => s.trim()).filter(Boolean).join('\n\n')
-        const agents = ctx.get('agents') as AgentsLike | undefined
-        const subagents = ctx.get('subagents') as SubagentsLike | undefined
-        let nodeError: string | undefined
-        let out = ''
-        const ts = makeTimeoutSignal(d.timeout)
-        try {
-          if (!agents || !subagents) nodeError = 'subagent services unavailable on this host'
-          else {
-            const parent = agents.roots()[0] ?? agents.list()[0]
-            const provider = pickSubagentProvider(subagents)
-            if (!parent) nodeError = 'no live agent to delegate from'
-            else if (!provider) nodeError = 'no subagent provider registered'
-            else {
-              const run = await subagents.start(provider, {
-                label: 'workflow-agent',
-                prompt: [{ type: 'text', text: prompt }],
-                parent,
-                signal: ts.signal,
-                agentOptions: parseAgentOptions(d.model),
-              })
-              const result: SubagentResultLike = await run.result
-              nodeError = stopReasonError(result)
-              out = outputText(result)
-              void run.dispose().catch(() => {})
-            }
-          }
-        } catch (err) {
-          nodeError = err instanceof Error ? err.message : String(err)
-        } finally {
-          ts.clear()
-        }
-        setRec({ status: nodeError ? 'error' : 'ok', output: out, error: nodeError })
-        lastOutput = nodeError ? '' : out
-        if (nodeError) {
-          if (onError === 'continue') return await fanOut('')
-          return received
-        }
-        return await fanOut(out)
+        const error = '自动触发 Agent 尚未接入受限执行生命周期；请使用手动运行，避免绕过调用预算'
+        setRec({ status: 'error', error })
+        throw new Error(error)
       } else if (d.kind === 'output') {
         const template = (d.template ?? '').trim() ? d.template! : '{{result}}'
         const rendered = renderTemplateHost(template, { result: input })
@@ -890,70 +844,7 @@ export function apply(ctx: Context) {
         handler: async (request, response) => {
           if (rejectNonPost(request, response)) return
           if (!sameOrigin(request)) return sendJson(response, 403, { error: 'untrusted origin' })
-          let ts: ReturnType<typeof makeTimeoutSignal> | undefined
-          try {
-            const body = (await readJsonBody(request, 4 * 1024 * 1024)) as
-              | { prompt?: unknown; timeout?: unknown; agentOptions?: unknown }
-              | undefined
-            const prompt = typeof body?.prompt === 'string' ? body.prompt : ''
-            if (!prompt.trim()) {
-              return sendJson(response, 400, { error: 'prompt must be a non-empty string' })
-            }
-            const agents = ctx.get('agents') as AgentsLike | undefined
-            const subagents = ctx.get('subagents') as SubagentsLike | undefined
-            if (!agents || !subagents) {
-              return sendJson(response, 503, {
-                error: 'subagent services unavailable on this host (ctx.agents / ctx.subagents)',
-              })
-            }
-            // Delegate from a live agent (root preferred) so the child derives
-            // workspace, lineage, and delegation depth correctly.
-            const parent = agents.roots()[0] ?? agents.list()[0]
-            if (!parent) {
-              return sendJson(response, 400, { error: 'no live agent to delegate from' })
-            }
-            const provider = pickSubagentProvider(subagents)
-            if (!provider) {
-              return sendJson(response, 400, { error: 'no subagent provider registered' })
-            }
-            ts = makeTimeoutSignal(body?.timeout, response)
-            // Optional per-child model route: "provider|modelId" picked in the canvas.
-            let agentOptions: { provider?: string; model?: string } | undefined
-            if (typeof body?.agentOptions === 'object' && body?.agentOptions !== null) {
-              const ao = body.agentOptions as { provider?: unknown; model?: unknown }
-              if (typeof ao.provider === 'string' && typeof ao.model === 'string' && ao.provider && ao.model) {
-                agentOptions = { provider: ao.provider, model: ao.model }
-              }
-            }
-            const run = await subagents.start(provider, {
-              label: 'workflow-agent',
-              prompt: [{ type: 'text', text: prompt }],
-              parent,
-              signal: ts.signal,
-              agentOptions,
-            })
-            let result: SubagentResultLike
-            try {
-              result = await run.result
-            } finally {
-              void run.dispose().catch(() => {})
-            }
-            const error = ts.isTimeout() ? `运行超时（>${Number(body?.timeout)}s）` : stopReasonError(result)
-            sendJson(response, 200, {
-              ok: true,
-              output: outputText(result),
-              stopReason: result.stopReason,
-              error,
-              structured: result.structured,
-            })
-          } catch (err) {
-            if (ts?.isTimeout()) {
-              return sendJson(response, 200, { ok: true, output: '', error: `运行超时（>${ts.seconds}s）` })
-            }
-            sendJson(response, 400, { error: err instanceof Error ? err.message : String(err) })
-          } finally {
-            ts?.clear()
-          }
+          sendJson(response, 410, { error: '旧 Agent 执行接口已停用，请使用新版工作台；DSH 执行必须携带本轮执行标识和调用预算' })
         },
       }),
     )

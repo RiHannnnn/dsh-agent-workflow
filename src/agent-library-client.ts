@@ -25,7 +25,7 @@ export async function fetchAgentLibrary(options: { signal?: AbortSignal } = {}):
     signal: options.signal,
   })
   const data: unknown = await response.json()
-  if (!response.ok || !data || typeof data !== 'object') throw new Error('角色库暂不可用，请检查本地 Codex 配置后刷新。')
+  if (!response.ok || !data || typeof data !== 'object') throw new Error('角色库暂不可用，请检查 DSH 插件与技能配置后刷新。')
   const raw = data as Record<string, unknown>
   if (typeof raw.ok !== 'boolean' || !Array.isArray(raw.agents)) throw new Error('角色库返回的数据格式无效。')
   const agents = raw.agents.filter((value): value is LibraryAgent => {

@@ -9,7 +9,7 @@ import { useCanvasStore } from '../store/canvas.js'
 import { CodeEditor } from './CodeEditor.js'
 import { CodeEditorModal } from './CodeEditorModal.js'
 import expandArrowsIcon from '../assets/icons/expand-arrows-alt.svg'
-import { attachmentBytes, isAbsoluteWorkingDirectory, MAX_ATTACHMENT_BYTES, type WorkflowNodeData } from '../model.js'
+import { attachmentBytes, MAX_ATTACHMENT_BYTES, type WorkflowNodeData } from '../model.js'
 import { fetchAgentLibrary, type AgentLibraryResult } from '../agent-library-client.js'
 import { roleLabel, roleMatches } from '../agent-locale.js'
 
@@ -33,27 +33,6 @@ const KIND_LABELS: Record<WorkflowNodeData['kind'], string> = {
   code: 'Code',
   output: 'Output',
   note: 'Note',
-}
-
-function WorkingDirectoryField({ value, onSave }: { value: string; onSave: (value: string) => void }) {
-  const [draft, setDraft] = useState(value)
-  const [error, setError] = useState('')
-  useEffect(() => { setDraft(value); setError('') }, [value])
-  return (
-    <div className="wf-field">
-      <label htmlFor="wf-agent-cwd">Codex 工作目录（留空使用本地默认）</label>
-      <input id="wf-agent-cwd" value={draft} placeholder="手动填写绝对工作目录" onChange={(event) => { setDraft(event.target.value); setError('') }} />
-      <button type="button" className="wf-btn" disabled={draft === value} onClick={() => {
-        const cwd = draft.trim()
-        if (cwd && !isAbsoluteWorkingDirectory(cwd)) { setError('请填写绝对目录，不支持 ~、相对路径或控制字符。'); return }
-        if (cwd && !window.confirm(`确认允许 Codex 使用以下工作目录？\n${cwd}\n请只选择您信任并授权的目录。`)) return
-        onSave(cwd)
-        setDraft(cwd)
-      }}>确认工作目录</button>
-      <small>仅保存手动填写的目录；不会浏览或读取任意主机文件。执行前需再次确认。</small>
-      {error && <span role="alert">{error}</span>}
-    </div>
-  )
 }
 
 function TextAttachments({ nodeId, files }: { nodeId: string; files: NonNullable<WorkflowNodeData['attachments']> }) {
@@ -267,34 +246,31 @@ export function Inspector() {
         <>
           <label className="wf-field">
             <span>执行引擎</span>
-            <select value={d.engine ?? 'dsh'} onChange={(event) => updateNodeData(node.id, { engine: event.target.value as 'dsh' | 'codex' })}>
-              <option value="dsh">DSH Sub-agent</option>
-              <option value="codex">本地 Codex</option>
+            <select value={d.engine ?? 'dsh'} onChange={() => updateNodeData(node.id, { engine: 'dsh', roleId: 'dsh-default', handoff: 'complete', cwd: undefined, codexModel: undefined })}>
+              <option value="dsh">DSH 原生子 Agent</option>
+              {d.engine === 'codex' && <option value="codex" disabled>旧 Codex（停用，请切换 DSH）</option>}
             </select>
           </label>
-          {d.engine === 'codex' ? (
-            <>
+          <>
               <label className="wf-field"><span>搜索本地角色</span><input type="search" value={roleQuery} onChange={(event) => setRoleQuery(event.target.value)} placeholder="角色名称 / 描述" /></label>
               <label className="wf-field">
-                <span>Codex 角色</span>
-                <select value={d.roleId || 'codex-default'} onChange={(event) => updateNodeData(node.id, { roleId: event.target.value })}>
-                  <option value="codex-default">Codex 默认（通用只读角色）</option>
-                  {d.roleId && d.roleId !== 'codex-default' && !library?.agents.some((agent) => agent.id === d.roleId) && <option value={d.roleId}>{d.roleId}（角色库未找到，执行时将验证）</option>}
-                  {library?.agents.filter((agent) => agent.id !== 'codex-default' && (agent.id === d.roleId || roleMatches(agent, roleQuery))).map((agent) => <option key={agent.id} value={agent.id}>{roleLabel(agent)}</option>)}
+                <span>DSH 角色</span>
+                <select value={d.roleId || 'dsh-default'} onChange={(event) => updateNodeData(node.id, { roleId: event.target.value })}>
+                  <option value="dsh-default">DSH 默认角色（继承父会话权限，不保证只读）</option>
+                  {d.roleId && d.roleId !== 'dsh-default' && !library?.agents.some((agent) => agent.id === d.roleId) && <option value={d.roleId}>{d.roleId}（角色库未找到，执行时将验证）</option>}
+                  {library?.agents.filter((agent) => agent.engine === 'dsh' && (agent.id === d.roleId || roleMatches(agent, roleQuery))).map((agent) => <option key={agent.id} value={agent.id}>{roleLabel(agent)}</option>)}
                 </select>
               </label>
               <button type="button" className="wf-btn" onClick={() => setLibraryRefresh((value) => value + 1)}>刷新角色</button>
               {libraryError && <p role="alert">{libraryError}</p>}
               {library && (!library.ok || library.available === false) && <p role="alert">DSH 角色库暂不可用，请刷新重试。</p>}
               {library?.warnings?.map((warning, i) => <p key={i} role="status">{warning}</p>)}
-              <label className="wf-field"><span>Codex 模型（留空沿用本地默认）</span><input value={d.codexModel ?? ''} onChange={(event) => updateNodeData(node.id, { codexModel: event.target.value })} placeholder="不覆盖本地配置" /></label>
-              <WorkingDirectoryField key={node.id} value={d.cwd ?? ''} onSave={(cwd) => updateNodeData(node.id, { cwd })} />
-            </>
-          ) : (
+          </>
+          <>
             <label className="wf-field">
               <span>模型</span>
               <select value={d.model ?? ''} onChange={(e) => updateNodeData(node.id, { model: e.target.value })}>
-                <option value="">官方默认（继承）</option>
+                <option value="">继承所选 DSH 父会话</option>
                 {agentModels.map((m) => (
                   <option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
                     {m.name}（{m.provider}）
@@ -302,17 +278,17 @@ export function Inspector() {
                 ))}
               </select>
             </label>
-          )}
+          </>
           <label className="wf-field">
             <span>向下游交付</span>
             <select value={d.handoff ?? 'complete'} onChange={(event) => updateNodeData(node.id, { handoff: event.target.value as 'complete' | 'paragraph' })}>
               <option value="complete">完整输出后交付</option>
-              <option value="paragraph">逐段交付</option>
+              <option value="paragraph" disabled>逐段交付（DSH 尚未实现）</option>
             </select>
-            <small>逐段仅普通 DAG 模式支持，会增加调用次数。每段在下游独立上下文执行，不是共享会话；Loop / While 不支持。</small>
+            <small>DSH 当前使用完整结果交接，每轮最多 4 次外层调用。并发和单次输出限制不等于总 token／金额硬预算；默认超时120秒，最多600秒。</small>
           </label>
           <label className="wf-field">
-            <span>system prompt</span>
+            <span>任务提示词（与角色说明共同发送）</span>
             <textarea
               rows={3}
               value={d.prompt ?? ''}
@@ -320,7 +296,7 @@ export function Inspector() {
             />
           </label>
           <label className="wf-field">
-            <span>运行超时（秒，留空=不限制）</span>
+            <span>运行超时（秒，留空使用执行器默认值）</span>
             <input
               placeholder="例如 60"
               value={d.timeout ?? ''}
@@ -460,7 +436,7 @@ export function Inspector() {
       {d.kind === 'code' && (
         <>
           <label className="wf-field">
-            <span>运行超时（秒，留空=不限制）</span>
+            <span>运行超时（秒，留空使用执行器默认值）</span>
             <input
               placeholder="例如 30"
               value={d.timeout ?? ''}
